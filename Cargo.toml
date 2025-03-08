@@ -1,0 +1,17 @@
+[package]
+name = "synxit-server"
+version = "0.0.1"
+edition = "2021"
+license = "AGPL-3.0-or-later"
+description = "This is the synxit server software, a full encrypted decentralized network for almost everything."
+authors = ["Lennis Jaumann <x@lennis.dev>"]
+repository = "https://github.com/synxit/synxit-server"
+homepage = "https://www.synxit.de"
+[dependencies]
+actix-web = "4"
+chrono = "0.4.38"
+rand = "0.8.5"
+serde = { version = "1.0.215", features = ["derive"] }
+serde_json = "1.0.133"
+sha256 = "1.5.0"
+toml = "0.8.19"
