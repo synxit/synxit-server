@@ -74,6 +74,10 @@ impl Storage {
         if !dir_exists(self.log_dir.as_str()){
             create_dir(self.log_dir.as_str());
         }
+
+        if !dir_exists((self.data_dir.to_string() + "/users").as_str()){
+            create_dir((self.data_dir.to_string() + "/users").as_str());
+        }
     }
 
     pub fn clean(&self){
