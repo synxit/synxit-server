@@ -15,5 +15,8 @@ pub fn is_32_char_hex_string(s: &str) -> bool {
 }
 
 pub fn current_time() -> u64 {
-    std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs()
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_secs()
 }

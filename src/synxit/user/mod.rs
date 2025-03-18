@@ -1,7 +1,8 @@
 mod blob;
 mod sessions;
 
-use crate::storage::file::{read_file, write_file, read_dir};
+use crate::erorr::Error;
+use crate::storage::file::{read_dir, read_file, write_file};
 use serde::{Deserialize, Serialize};
 
 use super::config::CONFIG;
@@ -29,7 +30,7 @@ pub struct User {
     pub username: String,
     pub email: String,
     pub sessions: Vec<Session>,
-    pub auth: Auth
+    pub auth: Auth,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -76,11 +77,19 @@ pub enum MFAMethodType {
 impl User {
     pub fn all() -> Vec<User> {
         let mut users = vec![];
-        for user in read_dir(
+        match read_dir(
             &(CONFIG.get().unwrap().storage.data_dir.to_string() + "/users/"),
-            false
+            false,
         ) {
-            users.push(User::load(("@".to_owned() + user.as_str() + ":").as_str()));
+            Ok(dir) => {
+                for user in dir {
+                    match User::load(("@".to_owned() + user.as_str() + ":").as_str()) {
+                        Ok(user) => users.push(user),
+                        Err(err) => println!("Error loading user: {}", err),
+                    }
+                }
+            }
+            Err(err) => println!("Error reading users directory: {}", err),
         }
         users
     }
@@ -106,7 +115,6 @@ impl User {
                     blob_map: String::new(),
                 },
             },
-
         }
     }
 
@@ -118,19 +126,29 @@ impl User {
         serde_json::from_str(json).expect("Failed to deserialize user")
     }
 
-    pub fn save(&self) {
-        write_file(
+    pub fn save(&self) -> bool {
+        if write_file(
             self.resolve_data_path("data.json").as_str(),
             &self.to_string(),
-        )
+        ) {
+            true
+        } else {
+            println!("Error saving user data");
+            false
+        }
     }
 
-    pub fn load(username: &str) -> User {
-        let data = read_file(Self::resolve_user_data_path(username, "data.json").as_str());
-        let mut user = User::from_json(data.as_str());
-        user.username = username.to_string();
-        user
+    pub fn load(username: &str) -> Result<User, Error> {
+        match read_file(Self::resolve_user_data_path(username, "data.json").as_str()) {
+            Ok(data) => {
+                let mut user = User::from_json(data.as_str());
+                user.username = username.to_string();
+                Ok(user)
+            }
+            Err(_) => Err(Error::new("Could not load user data")),
+        }
     }
+
     pub fn resolve_data_path(&self, path: &str) -> String {
         Self::resolve_user_data_path(self.username.as_str(), path)
     }
@@ -138,7 +156,9 @@ impl User {
     pub fn resolve_user_data_path(username: &str, path: &str) -> String {
         CONFIG.get().unwrap().storage.data_dir.to_string()
             + "/users/"
-            + username.split("@").collect::<Vec<&str>>()[1].split(":").collect::<Vec<&str>>()[0]
+            + username.split("@").collect::<Vec<&str>>()[1]
+                .split(":")
+                .collect::<Vec<&str>>()[0]
             + "/"
             + path
     }

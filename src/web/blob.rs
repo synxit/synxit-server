@@ -1,13 +1,8 @@
-use crate::synxit::user::User;
-
 use super::{parse_request, Response};
-
-
 pub fn handle_blob(body: String) -> Response {
     let req = parse_request(body);
-    let mut user = User::load(req.data["username"].as_str().unwrap());
-    if req.check_auth() {
-        match req.action.as_str() {
+    match req.get_auth_user() {
+        Ok(mut user) => match req.action.as_str() {
             "new_blob" => {
                 let blob = user.new_blob(req.data["content"].as_str().unwrap());
                 Response {
@@ -29,7 +24,11 @@ pub fn handle_blob(body: String) -> Response {
                 }
             }
             "update_blob" => {
-                let blob = user.update_blob(req.data["id"].as_str().unwrap(), req.data["content"].as_str().unwrap(), req.data["hash"].as_str().unwrap());
+                let blob = user.update_blob(
+                    req.data["id"].as_str().unwrap(),
+                    req.data["content"].as_str().unwrap(),
+                    req.data["hash"].as_str().unwrap(),
+                );
                 Response {
                     success: blob.success,
                     data: serde_json::json!({
@@ -47,10 +46,11 @@ pub fn handle_blob(body: String) -> Response {
                 }
             }
             "set_blob_map" => {
-                user.auth.encrypted.blob_map = serde_json::to_string(&req.data["blob_map"]).unwrap();
+                user.auth.encrypted.blob_map =
+                    serde_json::to_string(&req.data["blob_map"]).unwrap();
                 user.save();
                 Response {
-                    success:true,
+                    success: true,
                     data: serde_json::json!({
                         "message": "Set"
                     }),
@@ -62,13 +62,7 @@ pub fn handle_blob(body: String) -> Response {
                     "error": "Invalid action"
                 }),
             },
-        }
-    } else {
-        Response {
-            success: false,
-            data: serde_json::json!({
-                "error": "Not authenticated"
-            }),
-        }
+        },
+        Err(err) => err,
     }
 }
