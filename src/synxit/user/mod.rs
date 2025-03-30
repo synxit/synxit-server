@@ -1,9 +1,11 @@
 mod blob;
 mod sessions;
 
-use crate::erorr::Error;
-use crate::storage::file::{read_dir, read_file, write_file};
+use crate::logger::error::Error;
+use crate::storage::file::{file_exists, read_dir, read_file, write_file};
+use log::{error, warn};
 use serde::{Deserialize, Serialize};
+use totp_rs::{Secret, TOTP};
 
 use super::config::CONFIG;
 
@@ -20,7 +22,7 @@ pub struct AuthSession {
     pub id: u128,
     pub expires_at: u64,
     pub challenge: u128,
-    pub mfa_count: u8,
+    pub completed_mfa: Vec<u8>,
     pub password_correct: bool,
 }
 
@@ -28,7 +30,6 @@ pub struct AuthSession {
 pub struct User {
     #[serde(skip)]
     pub username: String,
-    pub email: String,
     pub sessions: Vec<Session>,
     pub auth: Auth,
 }
@@ -57,16 +58,16 @@ pub struct MFA {
     pub min_methods: u8,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct MFAMethod {
-    pub id: u16,
+    pub id: u8,
     pub name: String,
     pub enabled: bool,
     pub data: String,
     pub r#type: MFAMethodType,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub enum MFAMethodType {
     #[serde(rename = "totp")]
     TOTP,
@@ -85,23 +86,22 @@ impl User {
                 for user in dir {
                     match User::load(("@".to_owned() + user.as_str() + ":").as_str()) {
                         Ok(user) => users.push(user),
-                        Err(err) => println!("Error loading user: {}", err),
+                        Err(err) => error!("Error loading user: {}", err),
                     }
                 }
             }
-            Err(err) => println!("Error reading users directory: {}", err),
+            Err(err) => error!("Error reading users directory: {}", err),
         }
         users
     }
 
-    pub fn new(username: String, email: String) -> User {
+    pub fn new(username: String, hash: String, salt: String) -> User {
         User {
             username,
-            email,
             sessions: vec![],
             auth: Auth {
-                hash: String::new(),
-                salt: String::new(),
+                hash,
+                salt,
                 auth_sessions: vec![],
                 mfa: MFA {
                     enabled: false,
@@ -116,6 +116,10 @@ impl User {
                 },
             },
         }
+    }
+
+    pub fn user_exists(username: &str) -> bool {
+        !file_exists(Self::resolve_user_data_path(username, "data.json"))
     }
 
     pub fn to_string(&self) -> String {
@@ -133,19 +137,23 @@ impl User {
         ) {
             true
         } else {
-            println!("Error saving user data");
+            error!("Error saving user data");
             false
         }
     }
 
     pub fn load(username: &str) -> Result<User, Error> {
+        let lower_username = username.to_lowercase();
         match read_file(Self::resolve_user_data_path(username, "data.json").as_str()) {
             Ok(data) => {
                 let mut user = User::from_json(data.as_str());
-                user.username = username.to_string();
+                user.username = lower_username;
                 Ok(user)
             }
-            Err(_) => Err(Error::new("Could not load user data")),
+            Err(_) => {
+                warn!("Error loading user data");
+                Err(Error::new("Could not load user data"))
+            }
         }
     }
 
@@ -161,5 +169,60 @@ impl User {
                 .collect::<Vec<&str>>()[0]
             + "/"
             + path
+    }
+
+    pub fn create_mfa(&mut self, r#type: MFAMethodType) -> MFAMethod {
+        match r#type {
+            MFAMethodType::TOTP => {
+                // rand u16
+                let mut free_mfa_id = rand::random::<u8>();
+                while self.auth.mfa.methods.iter().any(|m| m.id == free_mfa_id) {
+                    free_mfa_id = rand::random::<u8>();
+                }
+                let method = MFAMethod {
+                    id: free_mfa_id,
+                    name: "TOTP".to_string(),
+                    enabled: true,
+                    data: TOTP::default().get_secret_base32(),
+                    r#type: MFAMethodType::TOTP,
+                };
+                self.auth.mfa.methods.push(method.clone());
+                method
+            }
+            MFAMethodType::U2F => {
+                // rand u16
+                let mut free_mfa_id = rand::random::<u8>();
+                while self.auth.mfa.methods.iter().any(|m| m.id == free_mfa_id) {
+                    free_mfa_id = rand::random::<u8>();
+                }
+                let method = MFAMethod {
+                    id: free_mfa_id,
+                    name: "U2F".to_string(),
+                    enabled: true,
+                    data: "".to_string(),
+                    r#type: MFAMethodType::U2F,
+                };
+                self.auth.mfa.methods.push(method.clone());
+                method
+            }
+        }
+    }
+
+    pub fn check_mfa(&self, id: u8, code: &str) -> bool {
+        let method = self.auth.mfa.methods.iter().find(|m| m.id == id);
+        if let Some(method) = method {
+            match method.r#type {
+                MFAMethodType::TOTP => match Secret::Encoded(method.clone().data).to_bytes() {
+                    Ok(bytes) => match TOTP::new(totp_rs::Algorithm::SHA1, 6, 1, 30, bytes) {
+                        Ok(totp) => totp.check_current(code).unwrap_or(false),
+                        Err(_) => false,
+                    },
+                    Err(_) => false,
+                },
+                MFAMethodType::U2F => false,
+            }
+        } else {
+            false
+        }
     }
 }

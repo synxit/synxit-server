@@ -20,12 +20,7 @@ pub fn prepare(req: Request) -> Response {
                         }),
                     }
                 }
-                Err(err) => Response {
-                    success: false,
-                    data: json!({
-                        "error": err.to_string()
-                    }),
-                },
+                Err(err) => Response::error(err.to_string().as_str()),
             }
         }
         Err(err) => err,

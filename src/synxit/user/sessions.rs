@@ -1,4 +1,4 @@
-use crate::erorr::Error;
+use crate::logger::error::Error;
 use crate::synxit::config::CONFIG;
 use crate::synxit::user::{AuthSession, Session, User};
 use crate::utils::{current_time, random_u128, u128_to_32_char_hex_string};
@@ -21,7 +21,7 @@ impl User {
             id,
             expires_at: current_time() + 3600,
             challenge: random_u128(),
-            mfa_count: 0,
+            completed_mfa: Vec::new(),
             password_correct: false,
         });
         u128_to_32_char_hex_string(id)
@@ -74,10 +74,6 @@ impl User {
         }
     }
 
-    pub fn add_mfa_count_to_auth_session(&mut self, id: &str) {
-        self.get_mut_auth_session_by_id(id).mfa_count += 1;
-    }
-
     pub fn check_password_for_auth_session(&mut self, id: &str, password_hash: &str) -> bool {
         let hash = self.auth.hash.clone();
         let auth_session = self.get_mut_auth_session_by_id(id);
@@ -95,13 +91,13 @@ impl User {
             Ok(auth_session) => {
                 if auth_session.password_correct {
                     if self.auth.mfa.enabled {
-                        if auth_session.mfa_count >= self.auth.mfa.min_methods {
+                        if auth_session.completed_mfa.len() as u8 >= self.auth.mfa.min_methods {
                             let session_id = self.create_session();
                             self.delete_auth_session_by_id(id);
                             self.save();
                             Ok(session_id)
                         } else {
-                            Err("require_mfas")
+                            Err("require_mfa")
                         }
                     } else {
                         let session_id = self.create_session();
@@ -139,6 +135,14 @@ impl User {
                 None => false,
             },
             Err(_) => false,
+        }
+    }
+
+    pub fn auth_session_add_completed_mfa(&mut self, id: &str, mfa_id: u8) {
+        match self.get_mut_auth_session_by_id(id) {
+            auth_session => {
+                auth_session.completed_mfa.push(mfa_id);
+            }
         }
     }
 }

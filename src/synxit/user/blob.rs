@@ -21,7 +21,7 @@ impl User {
 
     pub fn new_blob(&self, content: &str) -> BlobResponse {
         self.create_blob_dir();
-        let mut id = String::new();
+        let mut id = u128_to_32_char_hex_string(random_u128());
         while file_exists(self.resolve_blob_path(id.as_str()).as_str())
             && !Self::is_valid_blob_id(id.as_str())
         {
@@ -30,7 +30,7 @@ impl User {
         write_file(self.resolve_blob_path(id.as_str()).as_str(), content);
         BlobResponse {
             success: true,
-            id: id,
+            id,
             content: "".to_string(),
             hash: sha256::digest(content).to_string(),
         }

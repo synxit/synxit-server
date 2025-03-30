@@ -1,9 +1,12 @@
-use std::{path::Path, sync::OnceLock};
-
+use log::{error, info, LevelFilter};
 use serde::{Deserialize, Serialize};
+use std::{path::Path, process::exit, sync::OnceLock};
 use toml::Table;
 
-use crate::storage::file::{create_dir, dir_exists, file_exists, read_file, remove_dir};
+use crate::{
+    logger,
+    storage::file::{create_dir, dir_exists, file_exists, read_file, remove_dir},
+};
 
 pub static CONFIG: OnceLock<Config> = OnceLock::new();
 
@@ -64,32 +67,81 @@ impl Default for Storage {
 impl Storage {
     pub fn init(&self) {
         if !dir_exists(self.data_dir.as_str()) {
-            create_dir(self.data_dir.as_str());
+            if create_dir(self.data_dir.as_str()) {
+                info!("Data directory created: {}", self.data_dir);
+            } else {
+                error!("Failed to create data directory: {}", self.data_dir);
+                exit(10)
+            }
+        } else {
+            info!("Data directory already exists: {}", self.data_dir);
         }
 
         if !dir_exists(self.temp_dir.as_str()) {
-            create_dir(self.temp_dir.as_str());
+            if create_dir(self.temp_dir.as_str()) {
+                info!("Temp directory created: {}", self.temp_dir);
+            } else {
+                error!("Failed to create temp directory: {}", self.temp_dir);
+                exit(10)
+            }
+        } else {
+            info!("Temp directory already exists: {}", self.temp_dir);
         }
 
         if !dir_exists(self.log_dir.as_str()) {
-            create_dir(self.log_dir.as_str());
+            if create_dir(self.log_dir.as_str()) {
+                info!("Log directory created: {}", self.log_dir);
+            } else {
+                error!("Failed to create log directory: {}", self.log_dir);
+                exit(10)
+            }
+        } else {
+            info!("Log directory already exists: {}", self.log_dir);
         }
 
         if !dir_exists((self.data_dir.to_string() + "/users").as_str()) {
-            create_dir((self.data_dir.to_string() + "/users").as_str());
+            if create_dir((self.data_dir.to_string() + "/users").as_str()) {
+                info!(
+                    "Users directory created: {}",
+                    self.data_dir.to_string() + "/users"
+                );
+            } else {
+                error!(
+                    "Failed to create users directory: {}",
+                    self.data_dir.to_string() + "/users"
+                );
+                exit(10)
+            }
+        } else {
+            info!(
+                "Users directory already exists: {}",
+                self.data_dir.to_string() + "/users"
+            );
         }
     }
 
     pub fn clean(&self) {
         if dir_exists(self.data_dir.as_str()) {
-            remove_dir(self.data_dir.as_str());
+            if remove_dir(self.data_dir.as_str()) {
+                info!("Data directory cleaned: {}", self.data_dir.as_str());
+            } else {
+                error!("Failed to clean data directory: {}", self.data_dir.as_str());
+            }
         }
         if dir_exists(self.temp_dir.as_str()) {
-            remove_dir(self.temp_dir.as_str());
+            if remove_dir(self.temp_dir.as_str()) {
+                info!("Temp directory cleaned: {}", self.temp_dir.as_str());
+            } else {
+                error!("Failed to clean temp directory: {}", self.temp_dir.as_str());
+            }
         }
 
         if dir_exists(self.log_dir.as_str()) {
-            remove_dir(self.log_dir.as_str());
+            if remove_dir(self.log_dir.as_str()) {
+                info!("Log directory cleaned: {}", self.log_dir.as_str());
+            } else {
+                error!("Failed to clean log directory: {}", self.log_dir.as_str());
+            }
         }
     }
 }
@@ -106,11 +158,9 @@ impl Default for Config {
 pub fn load_config() {
     let mut config_default: Config = Config::default();
     let config_file: Table = read_config_file();
-
+    let empty = Table::new();
     if config_file.contains_key("network") && config_file["network"].is_table() {
-        let network = config_file["network"]
-            .as_table()
-            .expect("Can't parse network config");
+        let network = config_file["network"].as_table().unwrap_or(&empty);
         if network.contains_key("port") && network["port"].is_integer() {
             config_default.network.port =
                 network["port"].as_integer().expect("Can't parse port") as u16;
@@ -123,9 +173,7 @@ pub fn load_config() {
         }
     }
     if config_file.contains_key("storage") {
-        let storage = config_file["storage"]
-            .as_table()
-            .expect("Can't parse storage config");
+        let storage = config_file["storage"].as_table().unwrap_or(&empty);
         if storage.contains_key("data_dir") && storage["data_dir"].is_str() {
             config_default.storage.data_dir = storage["data_dir"]
                 .as_str()
@@ -147,9 +195,7 @@ pub fn load_config() {
     }
 
     if config_file.contains_key("auth") {
-        let auth = config_file["auth"]
-            .as_table()
-            .expect("Can't parse auth config");
+        let auth = config_file["auth"].as_table().unwrap_or(&empty);
         if auth.contains_key("session_timeout") && auth["session_timeout"].is_integer() {
             config_default.auth.session_timeout = auth["session_timeout"]
                 .as_integer()
@@ -161,6 +207,13 @@ pub fn load_config() {
                 .as_integer()
                 .expect("Can't parse auth_session_timeout")
                 as u64;
+        }
+    }
+
+    match logger::init_logger(config_default.storage.log_dir.as_str(), LevelFilter::Debug) {
+        Ok(_) => (),
+        Err(_) => {
+            exit(1);
         }
     }
 

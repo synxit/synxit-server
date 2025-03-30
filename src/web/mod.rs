@@ -1,7 +1,7 @@
 mod auth;
 mod blob;
 mod federation;
-mod keyring;
+mod registration;
 
 use crate::{
     synxit::{config::CONFIG, user::User},
@@ -10,7 +10,7 @@ use crate::{
 use actix_web::{get, post, routes, web::PayloadConfig, App, HttpResponse, HttpServer, Responder};
 use auth::handle_auth;
 use blob::handle_blob;
-use keyring::handle_keyring;
+use registration::handle_registration;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
@@ -24,14 +24,14 @@ async fn auth_request(req_body: String) -> impl Responder {
     handle_auth(req_body).send()
 }
 
+#[post("/synxit/registration")]
+async fn registration_request(req_body: String) -> impl Responder {
+    handle_registration(req_body).send()
+}
+
 #[post("/synxit/blob")]
 async fn blob_request(req_body: String) -> impl Responder {
     handle_blob(req_body).send()
-}
-
-#[post("/synxit/keyring")]
-async fn keyring_request(req_body: String) -> impl Responder {
-    handle_keyring(req_body).send()
 }
 
 #[get("/synxit/status")]
@@ -49,8 +49,8 @@ async fn status() -> impl Responder {
 
 #[routes]
 #[options("/synxit/auth")]
+#[options("/synxit/registration")]
 #[options("/synxit/blob")]
-#[options("/synxit/keyring")]
 async fn options_request() -> impl Responder {
     HttpResponse::Ok()
         .append_header(("Access-Control-Allow-Origin", "*"))
@@ -59,21 +59,30 @@ async fn options_request() -> impl Responder {
         .finish()
 }
 
-pub async fn start_server() -> std::io::Result<()> {
+pub async fn start_server() {
     let config = CONFIG.get().unwrap();
-    HttpServer::new(|| {
+    match HttpServer::new(|| {
         App::new()
             .app_data(PayloadConfig::new(1024 * 1024 * 1024 * 4))
             .service(redirect)
             .service(auth_request)
+            .service(registration_request)
             .service(blob_request)
-            .service(keyring_request)
             .service(options_request)
             .service(status)
     })
-    .bind((config.network.host.to_string(), config.network.port))?
-    .run()
-    .await
+    .bind((config.network.host.to_string(), config.network.port))
+    {
+        Ok(server) => match server.run().await {
+            Ok(_) => {}
+            Err(err) => {
+                log::error!("Cannot start server: {}", err);
+            }
+        },
+        Err(err) => {
+            log::error!("Cannot bind address: {}", err);
+        }
+    };
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -90,7 +99,7 @@ pub struct Response {
 
 impl Response {
     pub fn to_string(&self) -> String {
-        serde_json::to_string(&self).expect("Failed to serialize response")
+        serde_json::to_string(&self).unwrap_or(r#"{"success": false, "data": {}}"#.to_string())
     }
 
     pub fn send(&self) -> impl Responder {
@@ -110,47 +119,77 @@ impl Response {
             .append_header(("Location", location))
             .finish()
     }
+
+    pub fn error(message: &str) -> Response {
+        Response {
+            success: false,
+            data: serde_json::json!({ "error": message }),
+        }
+    }
 }
 
 impl Request {
     pub fn get_user(&self) -> Result<User, Response> {
         match self.data["username"].as_str() {
-            None => Err(Response {
-                success: false,
-                data: serde_json::json!({ "error": "Username not provided" }),
-            }),
+            None => Err(Response::error("Username not provided")),
             Some(username) => match User::load(username) {
                 Ok(user) => Ok(user),
-                Err(err) => Err(Response {
-                    success: false,
-                    data: serde_json::json!({ "error": err.to_string() }),
-                }),
+                Err(err) => Err(Response::error(err.to_string().as_str())),
             },
         }
     }
 
     pub fn get_auth_user(&self) -> Result<User, Response> {
         match self.data["username"].as_str() {
-            None => Err(Response {
-                success: false,
-                data: serde_json::json!({ "error": "Username not provided" }),
-            }),
+            None => Err(Response::error("Username not provided")),
             Some(username) => match User::load(username) {
                 Ok(user) => {
-                    if user.check_auth_by_id(self.data["session"].as_str().unwrap()) {
+                    if user.check_auth_by_id(self.data["session"].as_str().unwrap_or("")) {
                         Ok(user)
                     } else {
-                        Err(Response {
-                            success: false,
-                            data: serde_json::json!({ "error": "Unauthorized" }),
-                        })
+                        Err(Response::error("Unauthorized"))
                     }
                 }
-                Err(err) => Err(Response {
-                    success: false,
-                    data: serde_json::json!({ "error": err.to_string() }),
-                }),
+                Err(err) => Err(Response::error(err.to_string().as_str())),
             },
+        }
+    }
+
+    pub fn get_auth_completed_response(&self) -> Response {
+        match self.get_user() {
+            Ok(mut user) => match user
+                .convert_auth_session_to_session(self.data["auth_session"].as_str().unwrap_or(""))
+            {
+                Ok(session_id) => {
+                    user.save();
+                    Response {
+                        success: true,
+                        data: serde_json::json!({
+                            "session": session_id,
+                            "username": user.username,
+                            "master_key": user.auth.encrypted.master_key,
+                            "keyring": user.auth.encrypted.keyring,
+                            "blob_map": user.auth.encrypted.blob_map
+                        }),
+                    }
+                }
+                Err(err) => match err {
+                    "require_mfa" => Response {
+                        success: false,
+                        data: serde_json::json!({
+                            "data": "require_mfa"
+                        }),
+                    },
+                    "require_password" => Response {
+                        success: false,
+                        data: serde_json::json!({
+                            "data": "require_password"
+                        }),
+                    },
+                    _ => Response::error("Unknown error"),
+                },
+            },
+            Err(err) => err,
         }
     }
 }

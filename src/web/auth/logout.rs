@@ -15,20 +15,10 @@ pub fn logout(req: Request) -> Response {
                         }),
                     }
                 } else {
-                    Response {
-                        success: false,
-                        data: json!({
-                            "message": "Failed to log out"
-                        }),
-                    }
+                    Response::error("Failed to log out")
                 }
             }
-            None => Response {
-                success: false,
-                data: json!({
-                    "message": "No session provided"
-                }),
-            },
+            None => Response::error("No session provided"),
         },
         Err(err) => err,
     }

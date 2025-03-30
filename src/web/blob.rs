@@ -4,7 +4,7 @@ pub fn handle_blob(body: String) -> Response {
     match req.get_auth_user() {
         Ok(mut user) => match req.action.as_str() {
             "new_blob" => {
-                let blob = user.new_blob(req.data["content"].as_str().unwrap());
+                let blob = user.new_blob(req.data["content"].as_str().unwrap_or(""));
                 Response {
                     success: blob.success,
                     data: serde_json::json!({
@@ -14,7 +14,7 @@ pub fn handle_blob(body: String) -> Response {
                 }
             }
             "read_blob" => {
-                let blob = user.read_blob(req.data["id"].as_str().unwrap());
+                let blob = user.read_blob(req.data["id"].as_str().unwrap_or(""));
                 Response {
                     success: blob.success,
                     data: serde_json::json!({
@@ -25,9 +25,9 @@ pub fn handle_blob(body: String) -> Response {
             }
             "update_blob" => {
                 let blob = user.update_blob(
-                    req.data["id"].as_str().unwrap(),
-                    req.data["content"].as_str().unwrap(),
-                    req.data["hash"].as_str().unwrap(),
+                    req.data["id"].as_str().unwrap_or(""),
+                    req.data["content"].as_str().unwrap_or(""),
+                    req.data["hash"].as_str().unwrap_or(""),
                 );
                 Response {
                     success: blob.success,
@@ -37,7 +37,7 @@ pub fn handle_blob(body: String) -> Response {
                 }
             }
             "delete_blob" => {
-                user.delete_blob(req.data["id"].as_str().unwrap());
+                user.delete_blob(req.data["id"].as_str().unwrap_or(""));
                 Response {
                     success: true,
                     data: serde_json::json!({
@@ -47,7 +47,7 @@ pub fn handle_blob(body: String) -> Response {
             }
             "set_blob_map" => {
                 user.auth.encrypted.blob_map =
-                    serde_json::to_string(&req.data["blob_map"]).unwrap();
+                    serde_json::to_string(&req.data["blob_map"]).unwrap_or("".to_string());
                 user.save();
                 Response {
                     success: true,
@@ -56,12 +56,7 @@ pub fn handle_blob(body: String) -> Response {
                     }),
                 }
             }
-            _ => Response {
-                success: false,
-                data: serde_json::json!({
-                    "error": "Invalid action"
-                }),
-            },
+            _ => Response::error("Invalid action"),
         },
         Err(err) => err,
     }

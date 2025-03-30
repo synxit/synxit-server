@@ -10,11 +10,6 @@ pub fn is_auth(req: Request) -> Response {
                 "username": user.username
             }),
         },
-        Err(err) => Response {
-            success: false,
-            data: json!({
-                "error": err.to_string()
-            }),
-        },
+        Err(err) => err,
     }
 }
