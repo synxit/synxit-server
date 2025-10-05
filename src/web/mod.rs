@@ -92,7 +92,7 @@ pub async fn start_server() {
             }
         },
         Err(err) => {
-            log::error!("Cannot bind address: {}, maybe address already in use", err);
+            log::error!("Cannot bind address: {}", err);
         }
     };
 }
