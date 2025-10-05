@@ -55,3 +55,21 @@ pub fn read_dir<P: AsRef<Path>>(path: P, recursive: bool) -> io::Result<Vec<Stri
     }
     Ok(files)
 }
+
+pub fn get_folder_size<P: AsRef<Path>>(path: P) -> io::Result<u64> {
+    let mut size = get_file_size(&path)?;
+    for entry in fs::read_dir(path)? {
+        let entry = entry?;
+        let path = entry.path();
+        if path.is_dir() {
+            size += get_folder_size(&path)?;
+        } else {
+            size += get_file_size(path)?
+        }
+    }
+    Ok(size)
+}
+
+pub fn get_file_size<P: AsRef<Path>>(path: P) -> io::Result<u64> {
+    Ok(path.as_ref().metadata()?.len())
+}

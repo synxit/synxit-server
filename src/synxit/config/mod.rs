@@ -1,39 +1,69 @@
-use log::{error, info, LevelFilter};
+use log::{error, info, warn, LevelFilter};
 use serde::{Deserialize, Serialize};
 use std::{path::Path, process::exit, sync::OnceLock};
 use toml::Table;
 
 use crate::{
     logger,
-    storage::file::{create_dir, dir_exists, file_exists, read_file, remove_dir},
+    storage::file::{create_dir, dir_exists, read_file, remove_dir},
 };
 
 pub static CONFIG: OnceLock<Config> = OnceLock::new();
 
-#[derive(Deserialize, Serialize, Debug)]
+#[derive(Deserialize, Serialize, Debug, Clone)]
 pub struct Config {
     pub network: Network,
     pub storage: Storage,
     pub auth: Auth,
+    pub tiers: Vec<Tier>,
+    pub federation: Federation,
 }
 
-#[derive(Deserialize, Serialize, Debug)]
+#[derive(Deserialize, Serialize, Debug, Clone)]
+pub struct Federation {
+    pub enabled: bool,
+    pub blacklist: Blacklist,
+    pub whitelist: Whitelist,
+}
+
+#[derive(Deserialize, Serialize, Debug, Clone)]
+pub struct Blacklist {
+    pub enabled: bool,
+    pub hosts: Vec<String>,
+}
+
+#[derive(Deserialize, Serialize, Debug, Clone)]
+pub struct Whitelist {
+    pub enabled: bool,
+    pub hosts: Vec<String>,
+}
+
+#[derive(Deserialize, Serialize, Debug, Clone)]
 pub struct Network {
     pub port: u16,
     pub host: String,
 }
 
-#[derive(Deserialize, Serialize, Debug)]
+#[derive(Deserialize, Serialize, Debug, Clone)]
+pub struct Tier {
+    pub id: String,
+    pub name: String,
+    pub description: String,
+    pub quota: u64,
+}
+
+#[derive(Deserialize, Serialize, Debug, Clone)]
 pub struct Storage {
     pub data_dir: String,
     pub temp_dir: String,
     pub log_dir: String,
 }
 
-#[derive(Deserialize, Serialize, Debug)]
+#[derive(Deserialize, Serialize, Debug, Clone)]
 pub struct Auth {
     pub session_timeout: u64,
     pub auth_session_timeout: u64,
+    pub registration_enabled: bool,
 }
 
 impl Default for Auth {
@@ -41,6 +71,7 @@ impl Default for Auth {
         Auth {
             session_timeout: 60 * 60 * 24 * 7,
             auth_session_timeout: 60,
+            registration_enabled: true,
         }
     }
 }
@@ -64,85 +95,91 @@ impl Default for Storage {
     }
 }
 
+impl Default for Whitelist {
+    fn default() -> Self {
+        Whitelist {
+            enabled: false,
+            hosts: Vec::new(),
+        }
+    }
+}
+
+impl Default for Blacklist {
+    fn default() -> Self {
+        Blacklist {
+            enabled: false,
+            hosts: Vec::new(),
+        }
+    }
+}
+
+impl Default for Federation {
+    fn default() -> Self {
+        Federation {
+            enabled: false,
+            blacklist: Blacklist::default(),
+            whitelist: Whitelist::default(),
+        }
+    }
+}
+
 impl Storage {
+    /// Initialize storage directories, creating them if they don't exist.
     pub fn init(&self) {
-        if !dir_exists(self.data_dir.as_str()) {
-            if create_dir(self.data_dir.as_str()) {
-                info!("Data directory created: {}", self.data_dir);
-            } else {
-                error!("Failed to create data directory: {}", self.data_dir);
-                exit(10)
-            }
-        } else {
-            info!("Data directory already exists: {}", self.data_dir);
-        }
+        let directories = [
+            &self.temp_dir,
+            &self.data_dir,
+            &(self.data_dir.clone() + "/users"),
+            &self.log_dir,
+        ];
 
-        if !dir_exists(self.temp_dir.as_str()) {
-            if create_dir(self.temp_dir.as_str()) {
-                info!("Temp directory created: {}", self.temp_dir);
-            } else {
-                error!("Failed to create temp directory: {}", self.temp_dir);
-                exit(10)
-            }
-        } else {
-            info!("Temp directory already exists: {}", self.temp_dir);
-        }
+        self.delete_temp();
 
-        if !dir_exists(self.log_dir.as_str()) {
-            if create_dir(self.log_dir.as_str()) {
-                info!("Log directory created: {}", self.log_dir);
+        for dir in directories {
+            if !dir_exists(dir) {
+                if create_dir(dir) {
+                    info!("Directory created: {}", dir);
+                } else {
+                    error!("Failed to create directory: {}", dir);
+                    exit(10);
+                }
             } else {
-                error!("Failed to create log directory: {}", self.log_dir);
-                exit(10)
+                info!("Directory already exists: {}", dir);
             }
-        } else {
-            info!("Log directory already exists: {}", self.log_dir);
-        }
-
-        if !dir_exists((self.data_dir.to_string() + "/users").as_str()) {
-            if create_dir((self.data_dir.to_string() + "/users").as_str()) {
-                info!(
-                    "Users directory created: {}",
-                    self.data_dir.to_string() + "/users"
-                );
-            } else {
-                error!(
-                    "Failed to create users directory: {}",
-                    self.data_dir.to_string() + "/users"
-                );
-                exit(10)
-            }
-        } else {
-            info!(
-                "Users directory already exists: {}",
-                self.data_dir.to_string() + "/users"
-            );
         }
     }
 
-    pub fn clean(&self) {
-        if dir_exists(self.data_dir.as_str()) {
-            if remove_dir(self.data_dir.as_str()) {
-                info!("Data directory cleaned: {}", self.data_dir.as_str());
+    /// Delete temp directory
+    pub fn delete_temp(&self) {
+        if dir_exists(&self.temp_dir) {
+            if remove_dir(&self.temp_dir) {
+                info!("Temp directory deleted: {}", self.temp_dir);
             } else {
-                error!("Failed to clean data directory: {}", self.data_dir.as_str());
+                error!("Failed to delete temp directory: {}", self.temp_dir);
             }
         }
-        if dir_exists(self.temp_dir.as_str()) {
-            if remove_dir(self.temp_dir.as_str()) {
-                info!("Temp directory cleaned: {}", self.temp_dir.as_str());
-            } else {
-                error!("Failed to clean temp directory: {}", self.temp_dir.as_str());
-            }
-        }
+    }
 
-        if dir_exists(self.log_dir.as_str()) {
-            if remove_dir(self.log_dir.as_str()) {
-                info!("Log directory cleaned: {}", self.log_dir.as_str());
-            } else {
-                error!("Failed to clean log directory: {}", self.log_dir.as_str());
+    /// Clean up storage directories by removing them.
+    pub fn clean(&self) {
+        let directories = [&self.data_dir, &self.temp_dir, &self.log_dir];
+
+        for dir in directories {
+            if dir_exists(dir) {
+                if remove_dir(dir) {
+                    info!("Directory cleaned: {}", dir);
+                } else {
+                    error!("Failed to clean directory: {}", dir);
+                }
             }
         }
+    }
+}
+
+impl Config {
+    /// Retrieve a tier by its ID.
+    pub fn get_tier(&self, id: &str) -> Option<&Tier> {
+        self.tiers.iter().find(|tier| tier.id == id)
     }
 }
 
@@ -152,90 +189,150 @@ impl Default for Config {
             network: Network::default(),
             storage: Storage::default(),
             auth: Auth::default(),
+            tiers: Vec::new(),
+            federation: Federation::default(),
         }
     }
 }
-pub fn load_config() {
-    let mut config_default: Config = Config::default();
-    let config_file: Table = read_config_file();
-    let empty = Table::new();
-    if config_file.contains_key("network") && config_file["network"].is_table() {
-        let network = config_file["network"].as_table().unwrap_or(&empty);
-        if network.contains_key("port") && network["port"].is_integer() {
-            config_default.network.port =
-                network["port"].as_integer().expect("Can't parse port") as u16;
-        }
-        if network.contains_key("host") && network["host"].is_str() {
-            config_default.network.host = network["host"]
-                .as_str()
-                .expect("Can't parse host")
-                .to_string();
-        }
-    }
-    if config_file.contains_key("storage") {
-        let storage = config_file["storage"].as_table().unwrap_or(&empty);
-        if storage.contains_key("data_dir") && storage["data_dir"].is_str() {
-            config_default.storage.data_dir = storage["data_dir"]
-                .as_str()
-                .expect("Can't parse data_dir")
-                .to_string();
-        }
-        if storage.contains_key("temp_dir") && storage["temp_dir"].is_str() {
-            config_default.storage.temp_dir = storage["temp_dir"]
-                .as_str()
-                .expect("Can't parse temp_dir")
-                .to_string();
-        }
-        if storage.contains_key("log_dir") && storage["log_dir"].is_str() {
-            config_default.storage.log_dir = storage["log_dir"]
-                .as_str()
-                .expect("Can't parse log_dir")
-                .to_string();
-        }
-    }
 
-    if config_file.contains_key("auth") {
-        let auth = config_file["auth"].as_table().unwrap_or(&empty);
-        if auth.contains_key("session_timeout") && auth["session_timeout"].is_integer() {
-            config_default.auth.session_timeout = auth["session_timeout"]
-                .as_integer()
-                .expect("Can't parse session_timeout")
-                as u64;
-        }
-        if auth.contains_key("auth_session_timeout") && auth["auth_session_timeout"].is_integer() {
-            config_default.auth.auth_session_timeout = auth["auth_session_timeout"]
-                .as_integer()
-                .expect("Can't parse auth_session_timeout")
-                as u64;
-        }
-    }
+/// Load the configuration from a file or use defaults.
+pub fn load_config(config_file: Option<&Path>) -> Config {
+    let mut config = Config::default();
 
-    match logger::init_logger(config_default.storage.log_dir.as_str(), LevelFilter::Debug) {
-        Ok(_) => (),
-        Err(_) => {
-            exit(1);
-        }
-    }
-
-    config_default.storage.init();
-    CONFIG.get_or_init(|| config_default);
-}
-
-fn read_config_file() -> toml::Table {
-    let args: Vec<String> = std::env::args().collect();
-    if args.len() > 1 {
-        if file_exists(&args[1]) {
-            match read_file(Path::new(&args[1])) {
-                Ok(file_content) => match toml::from_str(file_content.as_str()) {
-                    Ok(config) => config,
-                    Err(err) => panic!("Error parsing config file: {}", err),
-                },
-                Err(err) => panic!("Error reading config file: {}", err),
-            }
-        } else {
-            toml::Table::new()
-        }
+    if let Some(config_file) = config_file {
+        let config_file = read_config_file(config_file).unwrap_or_default();
+        parse_network_config(&mut config, &config_file);
+        parse_auth_config(&mut config, &config_file);
+        parse_storage_config(&mut config, &config_file);
+        parse_auth_config(&mut config, &config_file);
+        parse_tiers_config(&mut config, &config_file);
+        parse_federation_config(&mut config, &config_file);
     } else {
-        toml::Table::new()
+        warn!("No configuration file provided, using defaults");
     }
+
+    if logger::init_logger(&config.storage.log_dir, LevelFilter::Debug).is_err() {
+        exit(1);
+    }
+
+    config.storage.init();
+    CONFIG.get_or_init(|| config.clone());
+    config
+}
+
+/// Read the configuration file and parse it as a TOML table.
+fn read_config_file(config_file: &Path) -> Result<Table, String> {
+    let file_content = read_file(config_file).map_err(|e| e.to_string())?;
+    toml::from_str(&file_content).map_err(|e| e.to_string())
+}
+
+/// Parse the network configuration.
+fn parse_network_config(config: &mut Config, table: &Table) {
+    if let Some(network) = table.get("network").and_then(|v| v.as_table()) {
+        if let Some(port) = network.get("port").and_then(|v| v.as_integer()) {
+            config.network.port = port as u16;
+        }
+        if let Some(host) = network.get("host").and_then(|v| v.as_str()) {
+            config.network.host = host.to_string();
+        }
+    }
+}
+
+/// Parse the storage configuration.
+fn parse_storage_config(config: &mut Config, table: &Table) {
+    if let Some(storage) = table.get("storage").and_then(|v| v.as_table()) {
+        if let Some(data_dir) = storage.get("data_dir").and_then(|v| v.as_str()) {
+            config.storage.data_dir = data_dir.to_string();
+        }
+        if let Some(temp_dir) = storage.get("temp_dir").and_then(|v| v.as_str()) {
+            config.storage.temp_dir = temp_dir.to_string();
+        }
+        if let Some(log_dir) = storage.get("log_dir").and_then(|v| v.as_str()) {
+            config.storage.log_dir = log_dir.to_string();
+        }
+    }
+}
+
+/// Parse the authentication configuration.
+fn parse_auth_config(config: &mut Config, table: &Table) {
+    if let Some(auth) = table.get("auth").and_then(|v| v.as_table()) {
+        if let Some(session_timeout) = auth.get("session_timeout").and_then(|v| v.as_integer()) {
+            config.auth.session_timeout = session_timeout as u64;
+        }
+        if let Some(auth_session_timeout) = auth
+            .get("auth_session_timeout")
+            .and_then(|v| v.as_integer())
+        {
+            config.auth.auth_session_timeout = auth_session_timeout as u64;
+        }
+        if let Some(registration_enabled) =
+            auth.get("registration_enabled").and_then(|v| v.as_bool())
+        {
+            config.auth.registration_enabled = registration_enabled;
+        }
+    }
+}
+
+/// Parse the tiers configuration.
+fn parse_tiers_config(config: &mut Config, table: &Table) {
+    if let Some(tiers) = table.get("tiers").and_then(|v| v.as_array()) {
+        for tier in tiers {
+            if let Some(tier_table) = tier.as_table() {
+                if let (Some(id), Some(name), Some(description), Some(quota)) = (
+                    tier_table.get("id").and_then(|v| v.as_str()),
+                    tier_table.get("name").and_then(|v| v.as_str()),
+                    tier_table.get("description").and_then(|v| v.as_str()),
+                    tier_table.get("quota").and_then(|v| v.as_integer()),
+                ) {
+                    config.tiers.push(Tier {
+                        id: id.to_string(),
+                        name: name.to_string(),
+                        description: description.to_string(),
+                        quota: quota as u64,
+                    });
+                }
+            }
+        }
+    }
+}
+
+/// Parse the federation configuration.
+fn parse_federation_config(config: &mut Config, table: &Table) {
+    if let Some(federation) = table.get("federation").and_then(|v| v.as_table()) {
+        config.federation.enabled = federation
+            .get("enabled")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
+
+        if let Some(blacklist) = federation.get("blacklist").and_then(|v| v.as_table()) {
+            config.federation.blacklist.enabled = blacklist
+                .get("enable")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false);
+            if let Some(hosts) = blacklist.get("hosts").and_then(|v| v.as_array()) {
+                config.federation.blacklist.hosts = hosts
+                    .iter()
+                    .filter_map(|v| v.as_str().map(String::from))
+                    .collect();
+            }
+        }
+
+        if let Some(whitelist) = federation.get("whitelist").and_then(|v| v.as_table()) {
+            config.federation.whitelist.enabled = whitelist
+                .get("enable")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false);
+            if let Some(hosts) = whitelist.get("hosts").and_then(|v| v.as_array()) {
+                config.federation.whitelist.hosts = hosts
+                    .iter()
+                    .filter_map(|v| v.as_str().map(String::from))
+                    .collect();
+            }
+        }
+    }
+}
+
+pub fn get_config() -> Config {
+    let default_config = Config::default();
+    CONFIG.get().unwrap_or(&default_config).to_owned()
 }

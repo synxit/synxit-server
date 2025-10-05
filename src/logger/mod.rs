@@ -1,91 +1,117 @@
 pub mod error;
 
+use colored::Colorize;
 use error::Error;
+use log::{Level, LevelFilter, Log, Metadata, Record};
+use std::io::Write;
 
-use ftail::{ansi_escape::TextStyling, Config, Ftail};
-use log::{Level, LevelFilter, Log};
+pub fn display_copyright() {
+    let ascii_art = r#"
+                                                      88
+                                                      ""    ,d
+                                                            88
+    ,adPPYba,  8b       d8  8b,dPPYba,   8b,     ,d8  88  MM88MMM
+    I8[    ""  `8b     d8'  88P'   `"8a   `Y8, ,8P'   88    88
+     `"Y8ba,    `8b   d8'   88       88     )888(     88    88
+    aa    ]8I    `8b,d8'    88       88   ,d8" "8b,   88    88,
+    `"YbbdP"'      Y88'     88       88  8P'     `Y8  88    "Y888
+                   d8'
+                  d8'       "#;
+    println!(
+        "{}{} {} {}\n",
+        ascii_art.yellow().bold(),
+        "(c)".blue().bold(),
+        "2021-2025".bright_black(),
+        "the synxit developers".yellow().bold()
+    );
+}
 
+/// Initializes the logger with the specified directory and log level.
 pub fn init_logger(dir: &str, log_level: LevelFilter) -> Result<(), Error> {
-    match Ftail::new()
-        .custom(
-            |config: ftail::Config| Box::new(CustomLogger { config }) as Box<dyn Log + Send + Sync>,
-            log_level,
-        )
-        .daily_file(dir, log_level)
-        .datetime_format("%Y-%m-%d %H:%M:%S")
-        .init()
-    {
-        Ok(_) => Ok(()),
-        Err(e) => Err(Error::new(e.to_string().as_str())),
-    }
+    log::set_boxed_logger(Box::new(Logger {
+        log_dir: dir.to_string(),
+        level_filter: log_level,
+    }))
+    .map_err(|e| Error::new(e.to_string().as_str()))?;
+    log::set_max_level(log_level);
+    Ok(())
 }
 
-// the custom logger implementation
-struct CustomLogger {
-    config: Config,
+/// Custom logger implementation for handling log messages.
+struct Logger {
+    log_dir: String,
+    level_filter: LevelFilter,
 }
 
-impl Log for CustomLogger {
-    fn enabled(&self, metadata: &log::Metadata) -> bool {
-        if self.config.level_filter == LevelFilter::Off {
-            return true;
-        }
-
-        metadata.level() <= self.config.level_filter
+impl Log for Logger {
+    fn enabled(&self, metadata: &Metadata) -> bool {
+        metadata.level() <= self.level_filter
     }
 
-    fn log(&self, record: &log::Record) {
+    fn log(&self, record: &Record) {
         if !self.enabled(record.metadata()) {
             return;
         }
 
-        let time = chrono::Local::now()
-            .format(&self.config.datetime_format)
-            .to_string();
+        let time = chrono::Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
+        let message = record.args().to_string();
 
-        match record.level() {
-            Level::Error => println!(
-                "{}{}{} {} {}",
-                "[".blue(),
-                "E".red().bold(),
-                "]".blue(),
-                time.bright_black(),
-                record.args().red()
-            ),
-            Level::Warn => println!(
-                "{}{}{} {} {}",
-                "[".blue(),
-                "W".yellow().bold(),
-                "]".blue(),
-                time.bright_black(),
-                record.args().yellow()
-            ),
-            Level::Info => println!(
-                "{}{}{} {} {}",
-                "[".blue(),
-                "i".green().bold(),
-                "]".blue(),
-                time.bright_black(),
-                record.args()
-            ),
-            Level::Debug => println!(
-                "{}{}{} {} {}",
-                "[".blue(),
-                "D".blue().bold(),
-                "]".blue(),
-                time.bright_black(),
-                record.args().blue()
-            ),
-            Level::Trace => println!(
-                "{}{}{} {} {}",
-                "[".blue(),
-                "T".magenta().bold(),
-                "]".blue(),
-                time.bright_black(),
-                record.args().magenta()
-            ),
+        if message.contains('\n') {
+            self.log_multiline(record.level(), &message, &time);
+        } else {
+            self.log_single_line(record.level(), &message, &time);
         }
     }
 
     fn flush(&self) {}
+}
+
+impl Logger {
+    fn log_single_line(&self, level: Level, message: &str, time: &str) {
+        log_to_terminal(level, message, time);
+        self.write_to_file(level, message, time);
+    }
+
+    fn log_multiline(&self, level: Level, message: &str, time: &str) {
+        self.log_single_line(level, "┏━━", time);
+        for line in message.lines() {
+            self.log_single_line(level, &format!("┃ {}", line), time);
+        }
+        self.log_single_line(level, "┗━━", time);
+    }
+
+    fn write_to_file(&self, level: Level, message: &str, time: &str) {
+        let plain_message = format!("[{}] {} {}", level, time, message);
+        // file name = YYYY-MM-DD.log
+        let file_name = chrono::Local::now().format("%Y-%m-%d.log").to_string();
+        let file_path = format!("{}/{}", &self.log_dir, file_name);
+        if let Ok(mut file) = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(file_path)
+        {
+            if let Err(e) = writeln!(file, "{}", plain_message) {
+                eprintln!("Failed to write to log file: {}", e);
+            }
+        }
+    }
+}
+
+fn log_to_terminal(level: Level, message: &str, time: &str) {
+    let (level_char, level_color) = match level {
+        Level::Error => ("E", "red"),
+        Level::Warn => ("W", "yellow"),
+        Level::Info => ("i", "green"),
+        Level::Debug => ("D", "blue"),
+        Level::Trace => ("T", "magenta"),
+    };
+
+    println!(
+        "{}{}{} {} {}",
+        "[".blue(),
+        level_char.color(level_color).bold(),
+        "]".blue(),
+        time.bright_black(),
+        message.color(level_color)
+    );
 }

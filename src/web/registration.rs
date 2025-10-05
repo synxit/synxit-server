@@ -1,20 +1,32 @@
+use log::info;
 use serde_json::json;
 
-use crate::synxit::user::User;
+use crate::{
+    logger::error::ERROR_REGISTRATION_DISABLED,
+    synxit::{
+        config::{Config, CONFIG},
+        user::User,
+    },
+};
 
 use super::{parse_request, Response};
 
 pub fn handle_registration(body: String) -> Response {
+    let default = Config::default();
+    let config = CONFIG.get().unwrap_or(&default);
+    if !config.auth.registration_enabled {
+        return Response::error(ERROR_REGISTRATION_DISABLED);
+    }
     let req = parse_request(body);
-    let username = req.data["username"].to_string();
-    let password = req.data["password"].to_string();
-    let salt = req.data["salt"].to_string();
-
-    if User::user_exists(username.as_str()) {
+    let username = req.data["username"].as_str().unwrap_or_default();
+    let password = req.data["password"].as_str().unwrap_or_default();
+    let salt = req.data["salt"].as_str().unwrap_or_default();
+    if User::user_exists(username) {
         Response::error("Username already exists")
     } else {
         let user = User::new(username, password, salt);
         if user.save() {
+            info!("New user registered: {}", user.username);
             Response {
                 success: true,
                 data: json!({

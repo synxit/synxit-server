@@ -1,5 +1,5 @@
 use super::Response;
-use crate::web::Request;
+use crate::{logger::error::ERROR_INVALID_SESSION, web::Request};
 use serde_json::json;
 
 pub fn logout(req: Request) -> Response {
@@ -18,7 +18,7 @@ pub fn logout(req: Request) -> Response {
                     Response::error("Failed to log out")
                 }
             }
-            None => Response::error("No session provided"),
+            None => Response::error(ERROR_INVALID_SESSION),
         },
         Err(err) => err,
     }

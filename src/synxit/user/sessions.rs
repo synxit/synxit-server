@@ -50,18 +50,22 @@ impl User {
         }
     }
 
-    fn get_mut_auth_session_by_id(&mut self, id: &str) -> &mut AuthSession {
-        let id = u128::from_str_radix(id, 16).expect("Failed to parse auth session id");
-        self.auth
-            .auth_sessions
-            .iter_mut()
-            .find(|s| s.id == id)
-            .expect("Failed to find auth session")
+    fn get_mut_auth_session_by_id(&mut self, id: &str) -> Result<&mut AuthSession, Error> {
+        match u128::from_str_radix(id, 16) {
+            Ok(id) => match self.auth.auth_sessions.iter_mut().find(|s| s.id == id) {
+                Some(session) => Ok(session),
+                None => Err(Error::new("Could not find auth session")),
+            },
+            Err(_) => Err(Error::new("Invalid auth session ID")),
+        }
     }
 
     pub fn delete_auth_session_by_id(&mut self, id: &str) {
-        let id = u128::from_str_radix(id, 16).expect("Failed to parse auth session id");
-        self.auth.auth_sessions.retain(|s| s.id != id);
+        if let Some(id) = u128::from_str_radix(id, 16).ok() {
+            self.auth.auth_sessions.retain(|s| s.id != id);
+        } else {
+            log::error!("Invalid auth session ID");
+        }
     }
 
     pub fn delete_session_by_id(&mut self, id: &str) -> bool {
@@ -76,13 +80,18 @@ impl User {
 
     pub fn check_password_for_auth_session(&mut self, id: &str, password_hash: &str) -> bool {
         let hash = self.auth.hash.clone();
-        let auth_session = self.get_mut_auth_session_by_id(id);
-        let user_password_hash = u128_to_32_char_hex_string(auth_session.challenge) + hash.as_str();
-        if password_hash == sha256::digest(user_password_hash) {
-            auth_session.password_correct = true;
-            true
-        } else {
-            false
+        match self.get_mut_auth_session_by_id(id) {
+            Ok(auth_session) => {
+                let user_password_hash =
+                    u128_to_32_char_hex_string(auth_session.challenge) + hash.as_str();
+                if password_hash == sha256::digest(user_password_hash) {
+                    auth_session.password_correct = true;
+                    true
+                } else {
+                    false
+                }
+            }
+            Err(_) => false,
         }
     }
 
@@ -140,9 +149,10 @@ impl User {
 
     pub fn auth_session_add_completed_mfa(&mut self, id: &str, mfa_id: u8) {
         match self.get_mut_auth_session_by_id(id) {
-            auth_session => {
+            Ok(auth_session) => {
                 auth_session.completed_mfa.push(mfa_id);
             }
+            Err(_) => {}
         }
     }
 }
