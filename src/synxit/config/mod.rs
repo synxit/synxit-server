@@ -79,7 +79,7 @@ impl Default for Auth {
 impl Default for Network {
     fn default() -> Self {
         Network {
-            port: 8080,
+            port: 8044,
             host: "127.0.0.1".to_string(),
         }
     }
@@ -116,7 +116,7 @@ impl Default for Blacklist {
 impl Default for Federation {
     fn default() -> Self {
         Federation {
-            enabled: false,
+            enabled: true,
             blacklist: Blacklist::default(),
             whitelist: Whitelist::default(),
         }
