@@ -58,7 +58,7 @@ pub struct Auth {
 pub struct MFA {
     pub enabled: bool,
     pub methods: Vec<MFAMethod>,
-    pub recovery_codes: Vec<String>,
+    pub recovery_codes: [String; 8],
     pub min_methods: u8,
 }
 
@@ -117,7 +117,16 @@ impl User {
                 mfa: MFA {
                     enabled: false,
                     methods: vec![],
-                    recovery_codes: vec![],
+                    recovery_codes: [
+                        String::new(),
+                        String::new(),
+                        String::new(),
+                        String::new(),
+                        String::new(),
+                        String::new(),
+                        String::new(),
+                        String::new(),
+                    ],
                     min_methods: 0,
                 },
                 encrypted: EncryptedData {
@@ -223,11 +232,16 @@ impl User {
         }
     }
 
-    pub fn create_mfa(&mut self, r#type: MFAMethodType, name: String) -> MFAMethod {
+    pub fn create_mfa(&mut self, r#type: MFAMethodType, name: String) -> Option<MFAMethod> {
         match r#type {
             MFAMethodType::TOTP => {
                 let mut free_mfa_id = rand::random::<u8>();
-                while self.auth.mfa.methods.iter().any(|m| m.id == free_mfa_id) {
+                if self.auth.mfa.methods.len() >= 255 {
+                    error!("Too many MFA methods");
+                    return None;
+                }
+                while self.auth.mfa.methods.iter().any(|m| m.id == free_mfa_id) && free_mfa_id < 255
+                {
                     free_mfa_id = rand::random::<u8>();
                 }
                 let method = MFAMethod {
@@ -238,7 +252,7 @@ impl User {
                     r#type: MFAMethodType::TOTP,
                 };
                 self.auth.mfa.methods.push(method.clone());
-                method
+                Some(method)
             }
             MFAMethodType::U2F => {
                 // rand u16
@@ -254,8 +268,17 @@ impl User {
                     r#type: MFAMethodType::U2F,
                 };
                 self.auth.mfa.methods.push(method.clone());
-                method
+                Some(method)
             }
+        }
+    }
+
+    pub fn check_mfa_recovery_code(&mut self, code: &str) -> bool {
+        if let Some(pos) = self.auth.mfa.recovery_codes.iter().position(|c| c == code) {
+            self.auth.mfa.recovery_codes[pos] = String::new();
+            true
+        } else {
+            false
         }
     }
 
@@ -308,5 +331,38 @@ impl User {
         self.get_tier_quota()
             .checked_sub(self.get_used_quota())
             .unwrap_or(0)
+    }
+
+    fn generate_recovery_code() -> String {
+        let code: String = (0..10)
+            .map(|_| {
+                let idx = rand::random::<usize>() % 36;
+                if idx < 10 {
+                    (b'0' + idx as u8) as char
+                } else {
+                    (b'A' + (idx - 10) as u8) as char
+                }
+            })
+            .collect();
+        code
+    }
+
+    pub fn generate_recovery_codes(&mut self) -> [String; 8] {
+        let mut codes: [String; 8] = [
+            String::new(),
+            String::new(),
+            String::new(),
+            String::new(),
+            String::new(),
+            String::new(),
+            String::new(),
+            String::new(),
+        ];
+        for i in 0..8 {
+            let code = Self::generate_recovery_code();
+            codes[i] = code.to_string();
+        }
+        self.auth.mfa.recovery_codes = codes.to_owned();
+        codes
     }
 }

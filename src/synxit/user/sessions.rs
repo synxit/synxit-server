@@ -150,7 +150,13 @@ impl User {
     pub fn auth_session_add_completed_mfa(&mut self, id: &str, mfa_id: u8) {
         match self.get_mut_auth_session_by_id(id) {
             Ok(auth_session) => {
-                auth_session.completed_mfa.push(mfa_id);
+                // Only add if not already present and mfa_id is valid
+                if !auth_session.completed_mfa.contains(&mfa_id) && mfa_id < 255 {
+                    auth_session.completed_mfa.push(mfa_id);
+                    // Allow recovery codes (255) to be added multiple times
+                } else if mfa_id == 255 {
+                    auth_session.completed_mfa.push(mfa_id);
+                }
             }
             Err(_) => {}
         }
