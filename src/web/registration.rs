@@ -4,7 +4,7 @@ use serde_json::json;
 use crate::{
     logger::error::ERROR_REGISTRATION_DISABLED,
     synxit::{
-        config::{Config, CONFIG},
+        config::get_config,
         user::User,
     },
 };
@@ -12,9 +12,7 @@ use crate::{
 use super::{parse_request, Response};
 
 pub fn handle_registration(body: String) -> Response {
-    let default = Config::default();
-    let config = CONFIG.get().unwrap_or(&default);
-    if !config.auth.registration_enabled {
+    if !get_config().auth.registration_enabled {
         return Response::error(ERROR_REGISTRATION_DISABLED);
     }
     let req = parse_request(body);

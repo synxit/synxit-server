@@ -332,6 +332,7 @@ fn parse_federation_config(config: &mut Config, table: &Table) {
     }
 }
 
+/// Get the current configuration, returning defaults if not set.
 pub fn get_config() -> Config {
     let default_config = Config::default();
     CONFIG.get().unwrap_or(&default_config).to_owned()

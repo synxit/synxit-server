@@ -146,14 +146,17 @@ impl User {
         }
     }
 
-    pub fn to_string(&self) -> String {
-        serde_json::to_string(&self).expect("Failed to serialize user")
+    pub fn to_string(&self) -> Result<String, Error> {
+        serde_json::to_string_pretty(self)
+            .map_err(|e| Error::new(format!("Error serializing user data: {}", e).as_str()))
     }
 
-    pub fn from_json(json: &str) -> User {
-        serde_json::from_str(json).expect("Failed to deserialize user")
+    pub fn from_json(json: &str) -> Result<User, Error> {
+        serde_json::from_str(json)
+            .map_err(|e| Error::new(format!("Error parsing user data: {}", e).as_str()))
     }
 
+    /// Save the user data to the disk
     pub fn save(&self) -> bool {
         if !dir_exists(self.resolve_data_path("")) {
             if !create_dir(self.resolve_data_path("")) {
@@ -162,14 +165,19 @@ impl User {
             }
             info!("User directory created {}", self.resolve_data_path(""));
         }
-        if write_file(
-            self.resolve_data_path("data.json").as_str(),
-            &self.to_string(),
-        ) {
-            true
-        } else {
-            error!("Error saving user data");
-            false
+        match &self.to_string() {
+            Ok(string) => {
+                if write_file(self.resolve_data_path("data.json").as_str(), string) {
+                    true
+                } else {
+                    error!("Error saving user data");
+                    false
+                }
+            }
+            Err(err) => {
+                error!("Error serializing user data: {}", err);
+                false
+            }
         }
     }
 
@@ -178,9 +186,16 @@ impl User {
         match Self::resolve_user_data_path(username, "data.json") {
             Ok(path) => match read_file(path) {
                 Ok(data) => {
-                    let mut user = User::from_json(data.as_str());
-                    user.username = lower_username;
-                    Ok(user)
+                    match User::from_json(data.as_str()) {
+                        Ok(mut user) => {
+                            user.username = lower_username;
+                            Ok(user)
+                        }
+                        Err(err) => {
+                            warn!("Error parsing user data: {}", err);
+                            return Err(Error::new("Could not parse user data"));
+                        }
+                    }
                 }
                 Err(_) => {
                     warn!("Error loading user data");

@@ -20,6 +20,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
 #[get("/")]
+
 async fn redirect() -> impl Responder {
     Response::redirect("https://app.synxit.de")
 }

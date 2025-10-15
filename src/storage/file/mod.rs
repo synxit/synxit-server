@@ -14,10 +14,7 @@ pub fn write_file<P: AsRef<Path>>(path: P, content: &str) -> bool {
 }
 
 pub fn create_dir<P: AsRef<Path>>(path: P) -> bool {
-    match fs::create_dir_all(path) {
-        Ok(_) => true,
-        Err(_) => false,
-    }
+    fs::create_dir_all(path).is_ok()
 }
 
 pub fn remove_dir<P: AsRef<Path>>(path: P) -> bool {
