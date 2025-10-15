@@ -207,12 +207,16 @@ pub fn load_config(config_file: Option<&Path>) -> Config {
         parse_auth_config(&mut config, &config_file);
         parse_tiers_config(&mut config, &config_file);
         parse_federation_config(&mut config, &config_file);
-    } else {
-        warn!("No configuration file provided, using defaults");
     }
 
     if logger::init_logger(&config.storage.log_dir, LevelFilter::Debug).is_err() {
         exit(1);
+    }
+
+    if config_file.is_some() {
+        info!("Loading configuration from: {}", config_file.unwrap().display());
+    } else {
+        warn!("No configuration file provided, using default settings");
     }
 
     config.storage.init();

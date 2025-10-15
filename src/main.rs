@@ -16,12 +16,9 @@ async fn main() {
     display_copyright();
 
     let args = std::env::args().collect::<Vec<String>>();
-
-    println!("{:?}", args);
     let config = if args.len() >= 2 {
         load_config(Some(Path::new(&args[1])))
     } else {
-        println!("No config file specified, loading internal default config");
         load_config(None)
     };
 
