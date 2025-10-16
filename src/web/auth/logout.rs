@@ -8,12 +8,7 @@ pub fn logout(req: Request) -> Response {
             Some(session_id) => {
                 if user.delete_session_by_id(session_id) {
                     user.save();
-                    Response {
-                        success: true,
-                        data: json!({
-                            "message": "Logged out"
-                        }),
-                    }
+                    Response::success(json!({}))
                 } else {
                     Response::error("Failed to log out")
                 }

@@ -6,14 +6,14 @@ pub fn handle_blob(body: String) -> Response {
     let req = parse_request(body);
     match req.get_auth_user() {
         Ok(mut user) => match req.action.as_str() {
-            "new" => match user.new_blob(req.data["content"].as_str().unwrap_or_default()) {
+            "create" => match user.create_blob(req.data["content"].as_str().unwrap_or_default()) {
                 Ok(blob) => Response::success(json!({
                     "id": blob.0,
                     "hash": blob.1,
                 })),
                 Err(e) => Response::error(e.to_string().as_str()),
             },
-            "get" => match user.read_blob(req.data["id"].as_str().unwrap_or_default()) {
+            "read" => match user.read_blob(req.data["id"].as_str().unwrap_or_default()) {
                 Ok(blob) => Response::success(json!({
                   "content": blob.0,
                   "hash": blob.1,
@@ -36,6 +36,12 @@ pub fn handle_blob(body: String) -> Response {
                 success: user.delete_blob(req.data["id"].as_str().unwrap_or_default()),
                 data: json!({}),
             },
+            "hash" => match user.read_blob(req.data["id"].as_str().unwrap_or_default()) {
+                Ok(hash) => Response::success(json!({
+                    "hash": hash.1,
+                })),
+                Err(e) => Response::error(e.to_string().as_str()),
+            },
             "set_blob_map" => match req.data["blob_map"].as_str() {
                 Some(blob_map) => {
                     user.auth.encrypted.blob_map = blob_map.to_string();
@@ -46,6 +52,11 @@ pub fn handle_blob(body: String) -> Response {
                     }
                 }
                 None => Response::error("MISSING_BLOB_MAP"),
+            },
+            "get_blob_map" => match req.get_auth_user() {
+                Ok(user) => Response::success(json!({
+                        "blob_map": user.auth.encrypted.blob_map})),
+                Err(err) => err,
             },
             "get_quota" => {
                 let used = user.get_used_quota();

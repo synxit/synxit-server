@@ -3,10 +3,7 @@ use serde_json::json;
 
 use crate::{
     logger::error::ERROR_REGISTRATION_DISABLED,
-    synxit::{
-        config::get_config,
-        user::User,
-    },
+    synxit::{config::get_config, user::User},
 };
 
 use super::{parse_request, Response};
@@ -25,12 +22,9 @@ pub fn handle_registration(body: String) -> Response {
         let user = User::new(username, password, salt);
         if user.save() {
             info!("New user registered: {}", user.username);
-            Response {
-                success: true,
-                data: json!({
-                    "message": "Registration successful"
-                }),
-            }
+            Response::success(json!({
+                "username": user.username,
+            }))
         } else {
             Response::error("Unknown error")
         }

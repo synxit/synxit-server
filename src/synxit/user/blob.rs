@@ -33,7 +33,7 @@ impl User {
         self.resolve_data_path("blobs/") + id
     }
 
-    pub fn new_blob(&self, content: &str) -> Result<(String, String), Error> {
+    pub fn create_blob(&self, content: &str) -> Result<(String, String), Error> {
         let available_quota = self.get_available_quota();
         if available_quota < content.len() as u64 {
             return Err(Error::new(ERROR_QUOTA_EXCEEDED));

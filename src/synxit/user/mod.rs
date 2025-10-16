@@ -185,18 +185,16 @@ impl User {
         let lower_username = username.to_lowercase();
         match Self::resolve_user_data_path(username, "data.json") {
             Ok(path) => match read_file(path) {
-                Ok(data) => {
-                    match User::from_json(data.as_str()) {
-                        Ok(mut user) => {
-                            user.username = lower_username;
-                            Ok(user)
-                        }
-                        Err(err) => {
-                            warn!("Error parsing user data: {}", err);
-                            return Err(Error::new("Could not parse user data"));
-                        }
+                Ok(data) => match User::from_json(data.as_str()) {
+                    Ok(mut user) => {
+                        user.username = lower_username;
+                        Ok(user)
                     }
-                }
+                    Err(err) => {
+                        warn!("Error parsing user data: {}", err);
+                        return Err(Error::new("Could not parse user data"));
+                    }
+                },
                 Err(_) => {
                     warn!("Error loading user data");
                     Err(Error::new("Could not load user data"))

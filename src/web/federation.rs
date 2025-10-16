@@ -171,13 +171,10 @@ fn handle_blobs_action(share_user: &str, share_secret_num: u128, share_id: &str)
         return Response::error(ERROR_WRONG_SECRET);
     }
 
-    Response {
-        success: true,
-        data: json!({
-            "blobs": share.blobs,
-            "write_access": share.write
-        }),
-    }
+    Response::success(json!({
+        "blobs": share.blobs,
+        "write_access": share.write
+    }))
 }
 
 fn handle_get_action(
@@ -322,7 +319,7 @@ fn handle_new_action(
         Err(_) => return Response::error(ERROR_USER_NOT_FOUND),
     };
 
-    let new_blob = match user.new_blob(content) {
+    let new_blob = match user.create_blob(content) {
         Ok(blob) => blob,
         Err(err) => return Response::error(&err.to_string()),
     };

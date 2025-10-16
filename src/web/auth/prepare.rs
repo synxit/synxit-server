@@ -11,14 +11,11 @@ pub fn prepare(req: Request) -> Response {
             match user.get_auth_session_by_id(auth_session_id.as_str()) {
                 Ok(auth_session) => {
                     user.save();
-                    Response {
-                        success: true,
-                        data: json!({
-                            "auth_session": auth_session_id,
-                            "challenge": u128_to_32_char_hex_string(auth_session.challenge),
-                            "salt": user.auth.salt.to_string()
-                        }),
-                    }
+                    Response::success(json!({
+                        "auth_session": auth_session_id,
+                        "challenge": u128_to_32_char_hex_string(auth_session.challenge),
+                        "salt": user.auth.salt.to_string()
+                    }))
                 }
                 Err(err) => Response::error(err.to_string().as_str()),
             }

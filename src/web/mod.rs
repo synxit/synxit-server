@@ -47,14 +47,11 @@ async fn federation_request(req_body: String) -> impl Responder {
 
 #[get("/synxit/status")]
 async fn status() -> impl Responder {
-    Response {
-        success: true,
-        data: json!({
-            "message": "synxit server is running",
-            "timestamp": current_time(),
-            "synxit_version": env!("CARGO_PKG_VERSION"),
-        }),
-    }
+    Response::success(json!({
+        "message": "synxit server is running",
+        "timestamp": current_time(),
+        "synxit_version": env!("CARGO_PKG_VERSION"),
+    }))
     .send()
 }
 
@@ -182,17 +179,14 @@ impl Request {
             ) {
                 Ok(session_id) => {
                     user.save();
-                    Response {
-                        success: true,
-                        data: json!({
-                            "username": user.username,
-                            "status": "success",
-                            "session": session_id,
-                            "master_key": user.auth.encrypted.master_key,
-                            "keyring": user.auth.encrypted.keyring,
-                            "blob_map": user.auth.encrypted.blob_map
-                        }),
-                    }
+                    Response::success(json!({
+                        "username": user.username,
+                        "status": "success",
+                        "session": session_id,
+                        "master_key": user.auth.encrypted.master_key,
+                        "keyring": user.auth.encrypted.keyring,
+                        "blob_map": user.auth.encrypted.blob_map
+                    }))
                 }
                 Err(err) => match err {
                     "require_mfa" => {
@@ -214,26 +208,20 @@ impl Request {
                             }
                         }
 
-                        Response {
-                            success: true,
-                            data: json!({
-                                "username": user.username,
-                                "status": "require_mfa",
-                                "methods": enabled_methods
-                            }),
-                        }
+                        Response::success(json!({
+                            "username": user.username,
+                            "status": "require_mfa",
+                            "methods": enabled_methods
+                        }))
                     }
                     "require_password" => {
                         user.delete_auth_session_by_id(
                             self.data["auth_session"].as_str().unwrap_or_default(),
                         );
                         user.save();
-                        Response {
-                            success: false,
-                            data: json!({
-                                "status": "require_password"
-                            }),
-                        }
+                        Response::success(json!({
+                            "status": "require_password"
+                        }))
                     }
                     _ => Response::error("Unknown error"),
                 },

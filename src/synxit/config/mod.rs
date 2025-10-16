@@ -214,7 +214,10 @@ pub fn load_config(config_file: Option<&Path>) -> Config {
     }
 
     if config_file.is_some() {
-        info!("Loading configuration from: {}", config_file.unwrap().display());
+        info!(
+            "Loading configuration from: {}",
+            config_file.unwrap().display()
+        );
     } else {
         warn!("No configuration file provided, using default settings");
     }
