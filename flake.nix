@@ -47,8 +47,6 @@
           version = "0.0.1";
           src = ./.;
 
-          useFetchCargoVendor = true;
-
           nativeBuildInputs = with pkgs; [
             pkg-config
           ];
@@ -57,7 +55,6 @@
             openssl
           ];
 
-          # cargoHash = "sha256-LOmLivdtV+wKxHYoDfdg6Q2k/8Am7uxk0hw4th6ynhU=";
           cargoLock.lockFile = ./Cargo.lock;
         };
         defaultPackage = self.packages.${system}.synxit-server;
