@@ -35,6 +35,7 @@ pub struct User {
     pub username: String,
     pub sessions: Vec<Session>,
     pub auth: Auth,
+    pub foreign_key: String,
     pub tier: String,
 }
 
@@ -135,6 +136,7 @@ impl User {
                     blob_map: String::new(),
                 },
             },
+            foreign_key: String::new(),
             tier: String::new(),
         }
     }

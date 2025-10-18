@@ -17,6 +17,7 @@ mod encrypted_data;
 mod is_auth;
 mod logout;
 mod prepare;
+mod foreign_key;
 
 pub fn handle_auth(body: String) -> Response {
     let req = parse_request(body);
@@ -36,6 +37,7 @@ pub fn handle_auth(body: String) -> Response {
         "get_keyring" => get_keyring(req),
         "set_keyring" => set_keyring(req),
         "new_recovery_codes" => new_recovery_codes(req),
+        "set_foreign_key" => foreign_key::foreign_key(req),
         _ => Response::error(ERROR_INVALID_ACTION),
     }
 }

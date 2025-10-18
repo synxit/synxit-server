@@ -40,14 +40,13 @@ pub async fn handle_federation(body: String) -> Response {
     let share_secret_num = char_hex_string_to_u128(share_secret.to_string());
     let share_id = req.data["id"].as_str().unwrap_or_default();
     match req.action.as_str() {
-        "proxy" => {
-            handle_proxy_action(parse_request(body), &share_user, share_secret, share_id).await
-        }
+        "proxy" => handle_proxy_action(parse_request(body), &share_user, share_secret, share_id).await,
         "blobs" => handle_blobs_action(&share_user, share_secret_num, share_id),
-        "get" => handle_get_action(&req, &share_user, share_secret_num, share_id),
+        "read" => handle_read_action(&req, &share_user, share_secret_num, share_id),
         "update" => handle_update_action(&req, &share_user, share_secret_num, share_id),
         "delete" => handle_delete_action(&req, &share_user, share_secret_num, share_id),
-        "new" => handle_new_action(&req, &share_user, share_secret_num, share_id),
+        "create" => handle_create_action(&req, &share_user, share_secret_num, share_id),
+        "foreign_key" => foreign_key(&share_user),
         _ => Response::error(ERROR_INVALID_ACTION),
     }
 }
@@ -87,9 +86,9 @@ async fn handle_proxy_action(
                 Err(_) => Response::error(ERROR_REMOTE_ERROR),
             }
         }
-        "get" => {
+        "read" => {
             let request_body = json!({
-                "action": "get",
+                "action": "read",
                 "data": {
                     "id": share_id,
                     "share_user": share_user,
@@ -140,14 +139,28 @@ async fn handle_proxy_action(
                 Err(_) => Response::error(ERROR_REMOTE_ERROR),
             }
         }
-        "new" => {
+        "create" => {
             let request_body = json!({
-                "action": "new",
+                "action": "create",
                 "data": {
                     "id": share_id,
                     "share_user": share_user,
                     "secret": share_secret,
                     "content": req.data["content"].as_str().unwrap_or_default(),
+                }
+            });
+
+            match post_request(url, &request_body).await {
+                Ok(success) => serde_json::from_value(success)
+                    .unwrap_or_else(|_| Response::error(ERROR_INVALID_JSON)),
+                Err(_) => Response::error(ERROR_REMOTE_ERROR),
+            }
+        }
+        "foreign_key" => {
+            let request_body = json!({
+                "action": "foregin_key",
+                "data": {
+                    "share_user": share_user,
                 }
             });
 
@@ -177,7 +190,7 @@ fn handle_blobs_action(share_user: &str, share_secret_num: u128, share_id: &str)
     }))
 }
 
-fn handle_get_action(
+fn handle_read_action(
     req: &super::Request,
     share_user: &str,
     share_secret_num: u128,
@@ -297,7 +310,7 @@ fn handle_delete_action(
     }
 }
 
-fn handle_new_action(
+fn handle_create_action(
     req: &super::Request,
     share_user: &str,
     share_secret_num: u128,
@@ -334,6 +347,13 @@ fn handle_new_action(
         Response::success(json!({
             "id": new_blob.0
         }))
+    }
+}
+
+fn foreign_key(user: &str) -> Response {
+    match User::load(user) {
+        Ok(user) => Response::success(json!({"foreign_key": user.foreign_key})),
+        Err(err) => Response::error(err.to_string().as_str()),
     }
 }
 
