@@ -78,13 +78,11 @@ impl User {
         }
     }
 
-    pub fn check_password_for_auth_session(&mut self, id: &str, password_hash: &str) -> bool {
-        let hash = self.auth.hash.clone();
+    pub fn check_password_for_auth_session(&mut self, id: &str, response: &str) -> bool {
+        let password_hash = self.auth.hash.clone();
         match self.get_mut_auth_session_by_id(id) {
             Ok(auth_session) => {
-                let user_password_hash =
-                    u128_to_32_char_hex_string(auth_session.challenge) + hash.as_str();
-                if password_hash == sha256::digest(user_password_hash) {
+                if response == sha256::digest(u128_to_32_char_hex_string(auth_session.challenge) + password_hash.as_str()) {
                     auth_session.password_correct = true;
                     true
                 } else {
