@@ -89,7 +89,11 @@ impl User {
                     false
                 }
             }
-            Err(_) => false,
+            Err(_) => {
+                self.delete_auth_session_by_id(id);
+                self.save();
+                false
+            },
         }
     }
 
