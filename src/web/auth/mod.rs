@@ -2,7 +2,8 @@ use auth::auth;
 use auth_mfa::{
     add_mfa, auth_mfa, disable_mfa, enable_mfa, list_mfa, new_recovery_codes, remove_mfa,
 };
-use encrypted_data::{get_keyring, get_master_key, set_keyring, set_master_key};
+use encrypted_data::{change_password, get_keyring, get_master_key, set_keyring, set_master_key};
+use foreign_key::foreign_key;
 use is_auth::is_auth;
 use logout::logout;
 use prepare::prepare;
@@ -37,7 +38,8 @@ pub fn handle_auth(body: String) -> Response {
         "get_keyring" => get_keyring(req),
         "set_keyring" => set_keyring(req),
         "new_recovery_codes" => new_recovery_codes(req),
-        "set_foreign_key" => foreign_key::foreign_key(req),
+        "set_foreign_key" => foreign_key(req),
+        "change_password" => change_password(req),
         _ => Response::error(ERROR_INVALID_ACTION),
     }
 }
