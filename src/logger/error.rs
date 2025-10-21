@@ -14,11 +14,13 @@ pub const ERROR_INVALID_CREDENTIALS: &str = "INVALID_CREDENTIALS";
 pub const ERROR_INVALID_SESSION: &str = "INVALID_SESSION";
 pub const ERROR_REGISTRATION_DISABLED: &str = "REGISTRATION_DISABLED";
 
+/// Custom error type for logger-related errors.
 pub struct Error {
     message: String,
 }
 
 impl Error {
+    /// Creates a new Error instance with the given message.
     pub fn new(message: &str) -> Error {
         Error {
             message: message.to_string(),

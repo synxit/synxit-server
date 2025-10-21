@@ -5,6 +5,7 @@ use error::Error;
 use log::{Level, LevelFilter, Log, Metadata, Record};
 use std::io::Write;
 
+/// Displays the ASCII art copyright notice.
 pub fn display_copyright() {
     let ascii_art = r#"
                                                       88
@@ -44,10 +45,12 @@ struct Logger {
 }
 
 impl Log for Logger {
+    /// Determines if a log message should be logged based on its metadata.
     fn enabled(&self, metadata: &Metadata) -> bool {
         metadata.level() <= self.level_filter
     }
 
+    /// Logs a record, handling single-line and multi-line messages appropriately.
     fn log(&self, record: &Record) {
         if !self.enabled(record.metadata()) {
             return;
@@ -67,11 +70,13 @@ impl Log for Logger {
 }
 
 impl Logger {
+    /// Logs a single-line message to both terminal and file.
     fn log_single_line(&self, level: Level, message: &str, time: &str) {
         log_to_terminal(level, message, time);
         self.write_to_file(level, message, time);
     }
 
+    /// Logs a multi-line message with decorative borders to both terminal and file.
     fn log_multiline(&self, level: Level, message: &str, time: &str) {
         self.log_single_line(level, "┏━━", time);
         for line in message.lines() {
@@ -80,6 +85,7 @@ impl Logger {
         self.log_single_line(level, "┗━━", time);
     }
 
+    /// Writes a log message to the appropriate log file.
     fn write_to_file(&self, level: Level, message: &str, time: &str) {
         let plain_message = format!("[{}] {} {}", level, time, message);
         // file name = YYYY-MM-DD.log
@@ -97,6 +103,7 @@ impl Logger {
     }
 }
 
+/// Logs a message to the terminal with appropriate color coding.
 fn log_to_terminal(level: Level, message: &str, time: &str) {
     let (level_char, level_color) = match level {
         Level::Error => ("E", "red"),
