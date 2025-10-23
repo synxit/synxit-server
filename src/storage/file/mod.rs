@@ -2,13 +2,23 @@ use std::fs;
 use std::io;
 use std::path::Path;
 
+pub fn read_file<P: AsRef<Path>>(path: P) -> io::Result<Vec<u8>> {
+    fs::read(path)
+}
+
 /// Reads the entire contents of a file into a string.
-pub fn read_file<P: AsRef<Path>>(path: P) -> io::Result<String> {
+pub fn read_file_to_string<P: AsRef<Path>>(path: P) -> io::Result<String> {
     fs::read_to_string(path)
 }
 
+pub fn write_file<P: AsRef<Path>>(path: P, content: Vec<u8>) -> bool {
+    match fs::write(path, content) {
+        Ok(_) => true,
+        Err(_) => false,
+    }
+}
 /// Writes a string to a file, returning true on success and false on failure.
-pub fn write_file<P: AsRef<Path>>(path: P, content: &str) -> bool {
+pub fn write_file_from_string<P: AsRef<Path>>(path: P, content: &str) -> bool {
     match fs::write(path, content) {
         Ok(_) => true,
         Err(_) => false,

@@ -3,7 +3,7 @@ use crate::{
         Error, ERROR_BLOB_HASH_NOT_MATCH, ERROR_BLOB_NOT_FOUND, ERROR_BLOB_NOT_IN_SHARE,
         ERROR_NO_WRITE_ACCESS, ERROR_QUOTA_EXCEEDED, ERROR_SHARE_NOT_FOUND, ERROR_WRONG_SECRET,
     },
-    storage::file::{create_dir, dir_exists, file_exists, read_file, remove_file, write_file},
+    storage::file::{create_dir, dir_exists, file_exists, read_file, read_file_to_string, remove_file, write_file, write_file_from_string},
     utils::{char_hex_string_to_u128, random_u128, u128_to_32_char_hex_string},
     User,
 };
@@ -16,6 +16,16 @@ pub struct Share {
     pub blobs: Vec<String>,
     pub write: bool,
     pub secret: u128,
+}
+
+pub fn base64_encode(data: Vec<u8>) -> String {
+    base64::engine::Engine::encode(&base64::engine::general_purpose::STANDARD, data)
+}
+pub fn base64_decode(data: &str) -> Result<Vec<u8>, Error> {
+    match base64::engine::Engine::decode(&base64::engine::general_purpose::STANDARD, data) {
+        Ok(decoded) => Ok(decoded),
+        Err(e) => Err(Error::new(format!("Base64 decode error: {}", e).as_str())),
+    }
 }
 
 impl User {
@@ -34,6 +44,7 @@ impl User {
     }
 
     pub fn create_blob(&self, content: &str) -> Result<(String, String), Error> {
+        let data = base64_decode(content)?;
         let available_quota = self.get_available_quota();
         if available_quota < content.len() as u64 {
             return Err(Error::new(ERROR_QUOTA_EXCEEDED));
@@ -45,8 +56,8 @@ impl User {
         {
             id = u128_to_32_char_hex_string(random_u128());
         }
-        write_file(self.resolve_blob_path(id.as_str()).as_str(), content);
-        Ok((id, sha256::digest(content).to_string()))
+        write_file(self.resolve_blob_path(id.as_str()).as_str(), data.to_owned());
+        Ok((id, sha256::digest(data).to_string()))
     }
 
     pub fn read_blob(&self, id: &str) -> Result<(String, String), Error> {
@@ -59,7 +70,7 @@ impl User {
             return Err(Error::new(ERROR_BLOB_NOT_FOUND));
         }
         match read_file(path.as_str()) {
-            Ok(content) => Ok((content.clone(), sha256::digest(content).to_string())),
+            Ok(content) => Ok((base64_encode(content.to_owned()), sha256::digest(content).to_string())),
             Err(_) => Err(Error::new(ERROR_BLOB_NOT_FOUND)),
         }
     }
@@ -75,6 +86,7 @@ impl User {
         }
         match read_file(path.as_str()) {
             Ok(old_content) => {
+                let data = base64_decode(content)?;
                 let hash = sha256::digest(old_content);
                 if old_hash != hash.to_string() {
                     return Err(Error::new(ERROR_BLOB_HASH_NOT_MATCH));
@@ -83,13 +95,10 @@ impl User {
                 if available_quota < content.len() as u64 {
                     return Err(Error::new(ERROR_QUOTA_EXCEEDED));
                 }
-                write_file(path.as_str(), content);
-                Ok(sha256::digest(content).to_string())
+                write_file(path.as_str(), data.to_owned());
+                Ok(sha256::digest(data).to_string())
             }
-            Err(_) => {
-                write_file(path.as_str(), content);
-                Err(Error::new(ERROR_BLOB_NOT_FOUND))
-            }
+            Err(_) => Err(Error::new(ERROR_BLOB_NOT_FOUND))
         }
     }
 
@@ -110,7 +119,7 @@ impl User {
     fn get_share_data(username: String) -> Result<Vec<Share>, Error> {
         match Self::resolve_user_data_path(username.as_str(), "shares.json") {
             Ok(path) => Ok(serde_json::from_str(
-                read_file(path).unwrap_or("[]".to_string()).as_str(),
+                read_file_to_string(path).unwrap_or("[]".to_string()).as_str(),
             )
             .unwrap_or(vec![])),
             Err(e) => Err(e),
@@ -120,7 +129,7 @@ impl User {
     fn set_share_data(username: String, shares: Vec<Share>) -> bool {
         match Self::resolve_user_data_path(username.as_str(), "shares.json") {
             Ok(path) => {
-                write_file(
+                write_file_from_string(
                     path,
                     serde_json::to_string(&shares)
                         .unwrap_or("[]".to_string())

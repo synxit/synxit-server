@@ -3,7 +3,7 @@ use auth_mfa::{
     add_mfa, auth_mfa, disable_mfa, enable_mfa, list_mfa, new_recovery_codes, remove_mfa,
 };
 use encrypted_data::{change_password, get_keyring, get_master_key, set_keyring, set_master_key};
-use foreign_key::foreign_key;
+use foreign_keyring::foreign_keyring;
 use is_auth::is_auth;
 use logout::logout;
 use prepare::prepare;
@@ -18,7 +18,7 @@ mod encrypted_data;
 mod is_auth;
 mod logout;
 mod prepare;
-mod foreign_key;
+mod foreign_keyring;
 
 pub fn handle_auth(body: String) -> Response {
     let req = parse_request(body);
@@ -38,7 +38,7 @@ pub fn handle_auth(body: String) -> Response {
         "get_keyring" => get_keyring(req),
         "set_keyring" => set_keyring(req),
         "new_recovery_codes" => new_recovery_codes(req),
-        "set_foreign_key" => foreign_key(req),
+        "set_foreign_keyring" => foreign_keyring(req),
         "change_password" => change_password(req),
         _ => Response::error(ERROR_INVALID_ACTION),
     }

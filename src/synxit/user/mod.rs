@@ -3,7 +3,7 @@ mod sessions;
 
 use crate::logger::error::Error;
 use crate::storage::file::{
-    create_dir, dir_exists, file_exists, get_folder_size, read_dir, read_file, write_file,
+    create_dir, dir_exists, file_exists, get_folder_size, read_dir, read_file_to_string, write_file_from_string
 };
 use crate::synxit::config::Config;
 use log::{error, info, warn};
@@ -35,7 +35,7 @@ pub struct User {
     pub username: String,
     pub sessions: Vec<Session>,
     pub auth: Auth,
-    pub foreign_key: String,
+    pub foreign_keyring: String,
     pub tier: String,
 }
 
@@ -136,7 +136,7 @@ impl User {
                     blob_map: String::new(),
                 },
             },
-            foreign_key: String::new(),
+            foreign_keyring: String::new(),
             tier: String::new(),
         }
     }
@@ -169,7 +169,7 @@ impl User {
         }
         match &self.to_string() {
             Ok(string) => {
-                if write_file(self.resolve_data_path("data.json").as_str(), string) {
+                if write_file_from_string(self.resolve_data_path("data.json").as_str(), string) {
                     true
                 } else {
                     error!("Error saving user data");
@@ -186,7 +186,7 @@ impl User {
     pub fn load(username: &str) -> Result<User, Error> {
         let lower_username = username.to_lowercase();
         match Self::resolve_user_data_path(username, "data.json") {
-            Ok(path) => match read_file(path) {
+            Ok(path) => match read_file_to_string(path) {
                 Ok(data) => match User::from_json(data.as_str()) {
                     Ok(mut user) => {
                         user.username = lower_username;

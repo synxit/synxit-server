@@ -352,7 +352,7 @@ fn handle_create_action(
 
 fn foreign_key(user: &str) -> Response {
     match User::load(user) {
-        Ok(user) => Response::success(json!({"foreign_key": user.foreign_key})),
+        Ok(user) => Response::success(json!({"foreign_key": user.foreign_keyring})),
         Err(err) => Response::error(err.to_string().as_str()),
     }
 }

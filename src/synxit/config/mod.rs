@@ -5,7 +5,7 @@ use toml::Table;
 
 use crate::{
     logger,
-    storage::file::{create_dir, dir_exists, read_file, remove_dir},
+    storage::file::{create_dir, dir_exists, read_file_to_string, remove_dir},
 };
 
 pub static CONFIG: OnceLock<Config> = OnceLock::new();
@@ -229,7 +229,7 @@ pub fn load_config(config_file: Option<&Path>) -> Config {
 
 /// Read the configuration file and parse it as a TOML table.
 fn read_config_file(config_file: &Path) -> Result<Table, String> {
-    let file_content = read_file(config_file).map_err(|e| e.to_string())?;
+    let file_content = read_file_to_string(config_file).map_err(|e| e.to_string())?;
     toml::from_str(&file_content).map_err(|e| e.to_string())
 }
 
