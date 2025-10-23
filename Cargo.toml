@@ -1,4 +1,5 @@
 [package]
+publish = false
 name = "synxit-server"
 version = "0.0.1"
 edition = "2021"
@@ -10,6 +11,7 @@ homepage = "https://www.synxit.de"
 
 [dependencies]
 actix-web = "4"
+base64 = "0.22.1"
 chrono = "0.4.38"
 colored = "3.0.0"
 log = { version = "0.4.26", features = ["std", "serde"] }

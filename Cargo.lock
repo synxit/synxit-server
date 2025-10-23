@@ -1785,6 +1785,7 @@ name = "synxit-server"
 version = "0.0.1"
 dependencies = [
  "actix-web",
+ "base64",
  "chrono",
  "colored",
  "log",
