@@ -4,7 +4,7 @@ mod federation;
 mod registration;
 
 use crate::{
-    logger::error::ERROR_USER_NOT_FOUND,
+    logger::error::{ERROR_UNAUTHORIZED, ERROR_USER_NOT_FOUND},
     synxit::{
         config::CONFIG,
         user::{MFAMethodPublic, User},
@@ -115,11 +115,20 @@ impl Response {
         if self.success {
             HttpResponse::Ok()
                 .append_header(("Access-Control-Allow-Origin", "*"))
+                .append_header(("Content-Type", "application/json"))
                 .body(self.to_string())
         } else {
-            HttpResponse::BadRequest()
-                .append_header(("Access-Control-Allow-Origin", "*"))
-                .body(self.to_string())
+            if self.data["error"] == ERROR_UNAUTHORIZED {
+                HttpResponse::Unauthorized()
+                    .append_header(("Access-Control-Allow-Origin", "*"))
+                    .append_header(("Content-Type", "application/json"))
+                    .body(self.to_string())
+            } else {
+                HttpResponse::BadRequest()
+                    .append_header(("Access-Control-Allow-Origin", "*"))
+                    .append_header(("Content-Type", "application/json"))
+                    .body(self.to_string())
+            }
         }
     }
 
@@ -163,7 +172,7 @@ impl Request {
                     if user.check_auth_by_id(self.data["session"].as_str().unwrap_or_default()) {
                         Ok(user)
                     } else {
-                        Err(Response::error("Unauthorized"))
+                        Err(Response::error(ERROR_UNAUTHORIZED))
                     }
                 }
                 Err(err) => Err(Response::error(err.to_string().as_str())),
