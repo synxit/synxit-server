@@ -97,7 +97,7 @@ impl User {
             Ok(old_content) => {
                 let data = base64_decode(content)?;
                 let hash = sha256::digest(old_content);
-                if old_hash != hash.to_string() {
+                if old_hash != hash {
                     return Err(Error::new(ERROR_BLOB_HASH_NOT_MATCH));
                 }
                 let available_quota = self.get_available_quota();

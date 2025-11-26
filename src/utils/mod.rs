@@ -11,10 +11,7 @@ pub fn u128_to_32_char_hex_string(num: u128) -> String {
 }
 
 pub fn char_hex_string_to_u128(hex: String) -> u128 {
-    match u128::from_str_radix(&hex, 16) {
-        Ok(num) => num,
-        Err(_) => 0,
-    }
+    u128::from_str_radix(&hex, 16).unwrap_or_default()
 }
 
 pub fn current_time() -> u64 {

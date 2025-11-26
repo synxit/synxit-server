@@ -117,18 +117,16 @@ impl Response {
                 .append_header(("Access-Control-Allow-Origin", "*"))
                 .append_header(("Content-Type", "application/json"))
                 .body(self.to_string())
+        } else if self.data["error"] == ERROR_UNAUTHORIZED {
+            HttpResponse::Unauthorized()
+                .append_header(("Access-Control-Allow-Origin", "*"))
+                .append_header(("Content-Type", "application/json"))
+                .body(self.to_string())
         } else {
-            if self.data["error"] == ERROR_UNAUTHORIZED {
-                HttpResponse::Unauthorized()
-                    .append_header(("Access-Control-Allow-Origin", "*"))
-                    .append_header(("Content-Type", "application/json"))
-                    .body(self.to_string())
-            } else {
-                HttpResponse::BadRequest()
-                    .append_header(("Access-Control-Allow-Origin", "*"))
-                    .append_header(("Content-Type", "application/json"))
-                    .body(self.to_string())
-            }
+            HttpResponse::BadRequest()
+                .append_header(("Access-Control-Allow-Origin", "*"))
+                .append_header(("Content-Type", "application/json"))
+                .body(self.to_string())
         }
     }
 

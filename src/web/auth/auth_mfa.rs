@@ -7,7 +7,7 @@ pub fn auth_mfa(req: Request) -> Response {
     match req.get_user() {
         Ok(mut user) => {
             if user.auth.mfa.enabled {
-                if !req.data.get("mfa_id").is_none() && !req.data.get("mfa_code").is_none() {
+                if req.data.get("mfa_id").is_some() && req.data.get("mfa_code").is_some() {
                     if user.check_mfa(
                         req.data["mfa_id"].as_u64().unwrap_or(0) as u8,
                         req.data["mfa_code"].as_str().unwrap_or_default(),
@@ -24,7 +24,7 @@ pub fn auth_mfa(req: Request) -> Response {
                     } else {
                         Response::error("Invalid MFA code")
                     }
-                } else if !req.data.get("mfa_recovery_code").is_none() {
+                } else if req.data.get("mfa_recovery_code").is_some() {
                     let code = req.data["mfa_recovery_code"].as_str().unwrap_or_default();
                     if code.len() != 8 {
                         return Response::error("Invalid recovery code format");

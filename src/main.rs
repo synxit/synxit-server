@@ -26,12 +26,7 @@ async fn main() {
     info!("Loading users...");
     for mut user in User::all() {
         user.delete_all_auth_sessions();
-        if config
-            .tiers
-            .iter()
-            .find(|tier| tier.id == user.tier)
-            .is_none()
-        {
+        if !config.tiers.iter().any(|tier| tier.id == user.tier) {
             warn!("User {} has an invalid tier", user.username);
         }
         if false {

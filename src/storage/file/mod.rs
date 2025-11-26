@@ -12,17 +12,11 @@ pub fn read_file_to_string<P: AsRef<Path>>(path: P) -> io::Result<String> {
 }
 
 pub fn write_file<P: AsRef<Path>>(path: P, content: Vec<u8>) -> bool {
-    match fs::write(path, content) {
-        Ok(_) => true,
-        Err(_) => false,
-    }
+    fs::write(path, content).is_ok()
 }
 /// Writes a string to a file, returning true on success and false on failure.
 pub fn write_file_from_string<P: AsRef<Path>>(path: P, content: &str) -> bool {
-    match fs::write(path, content) {
-        Ok(_) => true,
-        Err(_) => false,
-    }
+    fs::write(path, content).is_ok()
 }
 
 /// Creates a directory and all necessary parent directories, returning true on success and false on failure.
@@ -32,18 +26,12 @@ pub fn create_dir<P: AsRef<Path>>(path: P) -> bool {
 
 /// Removes a directory and all its contents, returning true on success and false on failure.
 pub fn remove_dir<P: AsRef<Path>>(path: P) -> bool {
-    match fs::remove_dir_all(path) {
-        Ok(_) => true,
-        Err(_) => false,
-    }
+    fs::remove_dir_all(path).is_ok()
 }
 
 /// Removes a file, returning true on success and false on failure.
 pub fn remove_file<P: AsRef<Path>>(path: P) -> bool {
-    match fs::remove_file(path) {
-        Ok(_) => true,
-        Err(_) => false,
-    }
+    fs::remove_file(path).is_ok()
 }
 
 /// Checks if a file exists at the given path.

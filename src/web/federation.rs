@@ -23,15 +23,15 @@ pub async fn handle_federation(body: String) -> Response {
         .unwrap_or((String::new(), String::new()))
         .1;
     if config.federation.enabled {
-        if config.federation.whitelist.enabled {
-            if !config.federation.whitelist.hosts.contains(&server) {
-                return Response::error(ERROR_REMOTE_ERROR);
-            }
+        if config.federation.whitelist.enabled
+            && !config.federation.whitelist.hosts.contains(&server)
+        {
+            return Response::error(ERROR_REMOTE_ERROR);
         }
-        if config.federation.blacklist.enabled {
-            if config.federation.blacklist.hosts.contains(&server) {
-                return Response::error(ERROR_REMOTE_ERROR);
-            }
+        if config.federation.blacklist.enabled
+            && config.federation.blacklist.hosts.contains(&server)
+        {
+            return Response::error(ERROR_REMOTE_ERROR);
         }
     } else {
         return Response::error(ERROR_REMOTE_ERROR);
@@ -41,14 +41,14 @@ pub async fn handle_federation(body: String) -> Response {
     let share_id = req.data["id"].as_str().unwrap_or_default();
     match req.action.as_str() {
         "proxy" => {
-            handle_proxy_action(parse_request(body), &share_user, share_secret, share_id).await
+            handle_proxy_action(parse_request(body), share_user, share_secret, share_id).await
         }
-        "blobs" => handle_blobs_action(&share_user, share_secret_num, share_id),
-        "read" => handle_read_action(&req, &share_user, share_secret_num, share_id),
-        "update" => handle_update_action(&req, &share_user, share_secret_num, share_id),
-        "delete" => handle_delete_action(&req, &share_user, share_secret_num, share_id),
-        "create" => handle_create_action(&req, &share_user, share_secret_num, share_id),
-        "foreign_key" => foreign_key(&share_user),
+        "blobs" => handle_blobs_action(share_user, share_secret_num, share_id),
+        "read" => handle_read_action(&req, share_user, share_secret_num, share_id),
+        "update" => handle_update_action(&req, share_user, share_secret_num, share_id),
+        "delete" => handle_delete_action(&req, share_user, share_secret_num, share_id),
+        "create" => handle_create_action(&req, share_user, share_secret_num, share_id),
+        "foreign_key" => foreign_key(share_user),
         _ => Response::error(ERROR_INVALID_ACTION),
     }
 }
@@ -210,13 +210,15 @@ fn handle_read_action(
         Err(_) => return Response::error(ERROR_USER_NOT_FOUND),
     };
 
-    if let Err(_) = User::check_share_permissions(
+    if User::check_share_permissions(
         share_user.to_string(),
         share_id.to_string(),
         share_secret_num.to_string(),
         blob.to_string(),
         false,
-    ) {
+    )
+    .is_err()
+    {
         return Response::error(ERROR_BLOB_NOT_IN_SHARE);
     }
 
@@ -249,13 +251,15 @@ fn handle_update_action(
         Err(_) => return Response::error(ERROR_USER_NOT_FOUND),
     };
 
-    if let Err(_) = User::check_share_permissions(
+    if User::check_share_permissions(
         share_user.to_string(),
         share_id.to_string(),
         share_secret_num.to_string(),
         blob.to_string(),
         true,
-    ) {
+    )
+    .is_err()
+    {
         return Response::error(ERROR_BLOB_NOT_IN_SHARE);
     }
 
@@ -286,19 +290,21 @@ fn handle_delete_action(
         Err(_) => return Response::error(ERROR_USER_NOT_FOUND),
     };
 
-    if let Err(_) = User::check_share_permissions(
+    if User::check_share_permissions(
         share_user.to_string(),
         share_id.to_string(),
         share_secret_num.to_string(),
         blob.to_string(),
         true,
-    ) {
+    )
+    .is_err()
+    {
         return Response::error(ERROR_BLOB_NOT_IN_SHARE);
     }
 
     match user.read_blob(blob) {
         Ok(read) => {
-            if hash.to_string() == read.1 {
+            if *hash == read.1 {
                 if user.delete_blob(blob) {
                     Response::success(json!({}))
                 } else {
@@ -339,11 +345,13 @@ fn handle_create_action(
         Err(err) => return Response::error(&err.to_string()),
     };
 
-    if let Err(_) = User::add_blob_to_share(
+    if User::add_blob_to_share(
         share_user.to_string(),
         share_id.to_string(),
         new_blob.0.to_string(),
-    ) {
+    )
+    .is_err()
+    {
         Response::error(ERROR_BLOB_NOT_IN_SHARE)
     } else {
         Response::success(json!({

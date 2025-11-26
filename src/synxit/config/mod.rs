@@ -10,7 +10,7 @@ use crate::{
 
 pub static CONFIG: OnceLock<Config> = OnceLock::new();
 
-#[derive(Deserialize, Serialize, Debug, Clone)]
+#[derive(Deserialize, Serialize, Debug, Clone, Default)]
 pub struct Config {
     pub network: Network,
     pub storage: Storage,
@@ -26,13 +26,13 @@ pub struct Federation {
     pub whitelist: Whitelist,
 }
 
-#[derive(Deserialize, Serialize, Debug, Clone)]
+#[derive(Deserialize, Serialize, Debug, Clone, Default)]
 pub struct Blacklist {
     pub enabled: bool,
     pub hosts: Vec<String>,
 }
 
-#[derive(Deserialize, Serialize, Debug, Clone)]
+#[derive(Deserialize, Serialize, Debug, Clone, Default)]
 pub struct Whitelist {
     pub enabled: bool,
     pub hosts: Vec<String>,
@@ -91,24 +91,6 @@ impl Default for Storage {
             data_dir: "/var/lib/synxit".to_string(),
             temp_dir: "/tmp/synxit".to_string(),
             log_dir: "/var/log/synxit".to_string(),
-        }
-    }
-}
-
-impl Default for Whitelist {
-    fn default() -> Self {
-        Whitelist {
-            enabled: false,
-            hosts: Vec::new(),
-        }
-    }
-}
-
-impl Default for Blacklist {
-    fn default() -> Self {
-        Blacklist {
-            enabled: false,
-            hosts: Vec::new(),
         }
     }
 }
@@ -180,18 +162,6 @@ impl Config {
     /// Retrieve a tier by its ID.
     pub fn get_tier(&self, id: &str) -> Option<&Tier> {
         self.tiers.iter().find(|tier| tier.id == id)
-    }
-}
-
-impl Default for Config {
-    fn default() -> Self {
-        Config {
-            network: Network::default(),
-            storage: Storage::default(),
-            auth: Auth::default(),
-            tiers: Vec::new(),
-            federation: Federation::default(),
-        }
     }
 }
 

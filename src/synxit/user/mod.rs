@@ -195,7 +195,7 @@ impl User {
                     }
                     Err(err) => {
                         warn!("Error parsing user data: {}", err);
-                        return Err(Error::new("Could not parse user data"));
+                        Err(Error::new("Could not parse user data"))
                     }
                 },
                 Err(_) => {
@@ -337,16 +337,11 @@ impl User {
     }
 
     pub fn get_used_quota(&self) -> u64 {
-        match get_folder_size(self.resolve_data_path("")) {
-            Ok(size) => size,
-            Err(_) => 0,
-        }
+        get_folder_size(self.resolve_data_path("")).unwrap_or_default()
     }
 
     pub fn get_available_quota(&self) -> u64 {
-        self.get_tier_quota()
-            .checked_sub(self.get_used_quota())
-            .unwrap_or(0)
+        self.get_tier_quota().saturating_sub(self.get_used_quota())
     }
 
     fn generate_recovery_code() -> String {
