@@ -359,20 +359,7 @@ impl User {
     }
 
     pub fn generate_recovery_codes(&mut self) -> [String; 8] {
-        let mut codes: [String; 8] = [
-            String::new(),
-            String::new(),
-            String::new(),
-            String::new(),
-            String::new(),
-            String::new(),
-            String::new(),
-            String::new(),
-        ];
-        for i in 0..8 {
-            let code = Self::generate_recovery_code();
-            codes[i] = code.to_string();
-        }
+        let codes: [String; 8] = std::array::from_fn(|_| Self::generate_recovery_code());
         self.auth.mfa.recovery_codes = codes.to_owned();
         codes
     }
