@@ -40,7 +40,9 @@ pub async fn handle_federation(body: String) -> Response {
     let share_secret_num = char_hex_string_to_u128(share_secret.to_string());
     let share_id = req.data["id"].as_str().unwrap_or_default();
     match req.action.as_str() {
-        "proxy" => handle_proxy_action(parse_request(body), &share_user, share_secret, share_id).await,
+        "proxy" => {
+            handle_proxy_action(parse_request(body), &share_user, share_secret, share_id).await
+        }
         "blobs" => handle_blobs_action(&share_user, share_secret_num, share_id),
         "read" => handle_read_action(&req, &share_user, share_secret_num, share_id),
         "update" => handle_update_action(&req, &share_user, share_secret_num, share_id),

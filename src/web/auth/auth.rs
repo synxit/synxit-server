@@ -1,4 +1,7 @@
-use crate::{logger::error::ERROR_INVALID_CREDENTIALS, web::{Request, Response}};
+use crate::{
+    logger::error::ERROR_INVALID_CREDENTIALS,
+    web::{Request, Response},
+};
 pub fn auth(req: Request) -> Response {
     match req.get_user() {
         Ok(mut user) => {
@@ -8,7 +11,7 @@ pub fn auth(req: Request) -> Response {
             ) {
                 user.save();
                 req.get_auth_completed_response()
-            }else {
+            } else {
                 Response::error(ERROR_INVALID_CREDENTIALS)
             }
         }

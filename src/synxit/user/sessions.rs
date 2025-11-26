@@ -82,7 +82,11 @@ impl User {
         let password_hash = self.auth.hash.clone();
         match self.get_mut_auth_session_by_id(id) {
             Ok(auth_session) => {
-                if response == sha256::digest(u128_to_32_char_hex_string(auth_session.challenge) + password_hash.as_str()) {
+                if response
+                    == sha256::digest(
+                        u128_to_32_char_hex_string(auth_session.challenge) + password_hash.as_str(),
+                    )
+                {
                     auth_session.password_correct = true;
                     true
                 } else {
@@ -93,7 +97,7 @@ impl User {
                 self.delete_auth_session_by_id(id);
                 self.save();
                 false
-            },
+            }
         }
     }
 

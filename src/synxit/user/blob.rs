@@ -3,7 +3,10 @@ use crate::{
         Error, ERROR_BLOB_HASH_NOT_MATCH, ERROR_BLOB_NOT_FOUND, ERROR_BLOB_NOT_IN_SHARE,
         ERROR_NO_WRITE_ACCESS, ERROR_QUOTA_EXCEEDED, ERROR_SHARE_NOT_FOUND, ERROR_WRONG_SECRET,
     },
-    storage::file::{create_dir, dir_exists, file_exists, read_file, read_file_to_string, remove_file, write_file, write_file_from_string},
+    storage::file::{
+        create_dir, dir_exists, file_exists, read_file, read_file_to_string, remove_file,
+        write_file, write_file_from_string,
+    },
     utils::{char_hex_string_to_u128, random_u128, u128_to_32_char_hex_string},
     User,
 };
@@ -56,7 +59,10 @@ impl User {
         {
             id = u128_to_32_char_hex_string(random_u128());
         }
-        write_file(self.resolve_blob_path(id.as_str()).as_str(), data.to_owned());
+        write_file(
+            self.resolve_blob_path(id.as_str()).as_str(),
+            data.to_owned(),
+        );
         Ok((id, sha256::digest(data).to_string()))
     }
 
@@ -70,7 +76,10 @@ impl User {
             return Err(Error::new(ERROR_BLOB_NOT_FOUND));
         }
         match read_file(path.as_str()) {
-            Ok(content) => Ok((base64_encode(content.to_owned()), sha256::digest(content).to_string())),
+            Ok(content) => Ok((
+                base64_encode(content.to_owned()),
+                sha256::digest(content).to_string(),
+            )),
             Err(_) => Err(Error::new(ERROR_BLOB_NOT_FOUND)),
         }
     }
@@ -98,7 +107,7 @@ impl User {
                 write_file(path.as_str(), data.to_owned());
                 Ok(sha256::digest(data).to_string())
             }
-            Err(_) => Err(Error::new(ERROR_BLOB_NOT_FOUND))
+            Err(_) => Err(Error::new(ERROR_BLOB_NOT_FOUND)),
         }
     }
 
@@ -119,7 +128,9 @@ impl User {
     fn get_share_data(username: String) -> Result<Vec<Share>, Error> {
         match Self::resolve_user_data_path(username.as_str(), "shares.json") {
             Ok(path) => Ok(serde_json::from_str(
-                read_file_to_string(path).unwrap_or("[]".to_string()).as_str(),
+                read_file_to_string(path)
+                    .unwrap_or("[]".to_string())
+                    .as_str(),
             )
             .unwrap_or(vec![])),
             Err(e) => Err(e),

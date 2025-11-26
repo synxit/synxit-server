@@ -15,10 +15,10 @@ use super::{parse_request, Response};
 mod auth;
 mod auth_mfa;
 mod encrypted_data;
+mod foreign_keyring;
 mod is_auth;
 mod logout;
 mod prepare;
-mod foreign_keyring;
 
 pub fn handle_auth(body: String) -> Response {
     let req = parse_request(body);

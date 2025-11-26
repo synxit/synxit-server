@@ -199,6 +199,8 @@ impl Default for Config {
 pub fn load_config(config_file: Option<&Path>) -> Config {
     let mut config = Config::default();
 
+    println!("{}", toml::to_string_pretty(&config).unwrap());
+
     if let Some(config_file) = config_file {
         let config_file = read_config_file(config_file).unwrap_or_default();
         parse_network_config(&mut config, &config_file);
@@ -283,6 +285,7 @@ fn parse_auth_config(config: &mut Config, table: &Table) {
 /// Parse the tiers configuration.
 fn parse_tiers_config(config: &mut Config, table: &Table) {
     if let Some(tiers) = table.get("tiers").and_then(|v| v.as_array()) {
+        config.tiers.clear();
         for tier in tiers {
             if let Some(tier_table) = tier.as_table() {
                 if let (Some(id), Some(name), Some(description), Some(quota)) = (

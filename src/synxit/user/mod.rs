@@ -3,7 +3,8 @@ mod sessions;
 
 use crate::logger::error::Error;
 use crate::storage::file::{
-    create_dir, dir_exists, file_exists, get_folder_size, read_dir, read_file_to_string, write_file_from_string
+    create_dir, dir_exists, file_exists, get_folder_size, read_dir, read_file_to_string,
+    write_file_from_string,
 };
 use crate::synxit::config::Config;
 use log::{error, info, warn};
