@@ -6,6 +6,19 @@ pub fn random_u128() -> u128 {
     rng.next_u64() as u128 | ((rng.next_u64() as u128) << 64)
 }
 
+pub trait HasID {
+    fn get_id(&self) -> u128;
+}
+
+pub fn create_unique_id<T: HasID>(existing_items: &Vec<T>) -> u128 {
+    loop {
+        let id = random_u128();
+        if !existing_items.iter().any(|item| item.get_id() == id) {
+            return id;
+        }
+    }
+}
+
 pub fn u128_to_32_char_hex_string(num: u128) -> String {
     format!("{:032X}", num)
 }

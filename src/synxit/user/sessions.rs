@@ -1,11 +1,24 @@
 use crate::logger::error::Error;
 use crate::synxit::config::CONFIG;
+use crate::synxit::security::verify_challenge_response;
 use crate::synxit::user::{AuthSession, Session, User};
-use crate::utils::{current_time, random_u128, u128_to_32_char_hex_string};
+use crate::utils::{create_unique_id, current_time, random_u128, u128_to_32_char_hex_string, HasID};
+
+impl HasID for Session {
+    fn get_id(&self) -> u128 {
+        self.id
+    }
+}
+
+impl  HasID for AuthSession {
+    fn get_id(&self) -> u128 {
+        self.id
+    }
+}
 
 impl User {
     pub fn create_session(&mut self) -> String {
-        let id: u128 = random_u128();
+        let id: u128 = create_unique_id(&self.sessions);
         self.sessions.push(Session {
             id,
             created_at: current_time(),
@@ -16,7 +29,7 @@ impl User {
     }
 
     pub fn create_auth_session(&mut self) -> String {
-        let id: u128 = random_u128();
+        let id: u128 = create_unique_id(&self.auth.auth_sessions);
         self.auth.auth_sessions.push(AuthSession {
             id,
             expires_at: current_time() + 3600,
@@ -82,12 +95,9 @@ impl User {
         let password_hash = self.auth.hash.clone();
         match self.get_mut_auth_session_by_id(id) {
             Ok(auth_session) => {
-                if response
-                    == sha256::digest(
-                        u128_to_32_char_hex_string(auth_session.challenge) + password_hash.as_str(),
-                    )
-                {
+                if verify_challenge_response(auth_session.challenge, response, password_hash) {
                     auth_session.password_correct = true;
+                    self.save();
                     true
                 } else {
                     false

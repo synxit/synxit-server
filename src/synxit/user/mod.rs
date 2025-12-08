@@ -12,6 +12,7 @@ use serde::{Deserialize, Serialize};
 use totp_rs::{Secret, TOTP};
 
 use super::config::{get_config, CONFIG};
+use super::security::verify_totp_code;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Session {
@@ -303,13 +304,7 @@ impl User {
         if let Some(method) = method {
             if method.enabled {
                 match method.r#type {
-                    MFAMethodType::TOTP => match Secret::Encoded(method.clone().data).to_bytes() {
-                        Ok(bytes) => match TOTP::new(totp_rs::Algorithm::SHA1, 6, 1, 30, bytes) {
-                            Ok(totp) => totp.check_current(code).unwrap_or(false),
-                            Err(_) => false,
-                        },
-                        Err(_) => false,
-                    },
+                    MFAMethodType::TOTP => verify_totp_code(method.data.to_string(), code),
                     MFAMethodType::U2F => false,
                 }
             } else {
