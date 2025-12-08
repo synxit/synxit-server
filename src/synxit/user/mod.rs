@@ -9,7 +9,7 @@ use crate::storage::file::{
 use crate::synxit::config::Config;
 use log::{error, info, warn};
 use serde::{Deserialize, Serialize};
-use totp_rs::{Secret, TOTP};
+use totp_rs::TOTP;
 
 use super::config::{get_config, CONFIG};
 use super::security::verify_totp_code;

@@ -168,9 +168,6 @@ impl Config {
 /// Load the configuration from a file or use defaults.
 pub fn load_config(config_file: Option<&Path>) -> Config {
     let mut config = Config::default();
-
-    println!("{}", toml::to_string_pretty(&config).unwrap());
-
     if let Some(config_file) = config_file {
         let config_file = read_config_file(config_file).unwrap_or_default();
         parse_network_config(&mut config, &config_file);
