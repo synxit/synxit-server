@@ -3,6 +3,10 @@ mod storage;
 mod synxit;
 mod utils;
 mod web;
+mod cli;
+
+#[cfg(test)]
+mod tests;
 
 use std::path::Path;
 
@@ -27,7 +31,7 @@ async fn main() {
     for mut user in User::all() {
         user.delete_all_auth_sessions();
         if !config.tiers.iter().any(|tier| tier.id == user.tier) {
-            warn!("User {} has an invalid tier", user.username);
+            warn!("User {} has an invalid tier", user.userhandle.to_string());
         }
         if false {
             user.delete_all_sessions();

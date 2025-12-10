@@ -8,6 +8,8 @@ use crate::{
     storage::file::{create_dir, dir_exists, read_file_to_string, remove_dir},
 };
 
+use super::user::Server;
+
 pub static CONFIG: OnceLock<Config> = OnceLock::new();
 
 #[derive(Deserialize, Serialize, Debug, Clone, Default)]
@@ -42,6 +44,7 @@ pub struct Whitelist {
 pub struct Network {
     pub port: u16,
     pub host: String,
+    pub fqdns: Vec<Server>,
 }
 
 #[derive(Deserialize, Serialize, Debug, Clone)]
@@ -81,6 +84,7 @@ impl Default for Network {
         Network {
             port: 8044,
             host: "127.0.0.1".to_string(),
+            fqdns: vec![Server::new("localhost".to_string())],
         }
     }
 }
@@ -210,6 +214,15 @@ fn parse_network_config(config: &mut Config, table: &Table) {
         }
         if let Some(host) = network.get("host").and_then(|v| v.as_str()) {
             config.network.host = host.to_string();
+        }
+
+        if let Some(fqdns) = network.get("fqdns").and_then(|v| v.as_array()) {
+            config.network.fqdns.clear();
+            for fqdn in fqdns {
+                if let Some(fqdn_str) = fqdn.as_str() {
+                    config.network.fqdns.push(Server::new(fqdn_str.to_string()));
+                }
+            }
         }
     }
 }

@@ -11,7 +11,6 @@ pub const ERROR_BLOB_HASH_NOT_MATCH: &str = "BLOB_HASH_NOT_MATCH";
 pub const ERROR_SHARE_NOT_FOUND: &str = "SHARE_NOT_FOUND";
 pub const ERROR_INVALID_CREDENTIALS: &str = "INVALID_CREDENTIALS";
 pub const ERROR_UNAUTHORIZED: &str = "Unauthorized";
-pub const ERROR_INVALID_SESSION: &str = "INVALID_SESSION";
 pub const ERROR_REGISTRATION_DISABLED: &str = "REGISTRATION_DISABLED";
 
 /// Custom error type for logger-related errors.

@@ -2,34 +2,40 @@ use crate::logger::error::Error;
 use crate::synxit::config::CONFIG;
 use crate::synxit::security::verify_challenge_response;
 use crate::synxit::user::{AuthSession, Session, User};
-use crate::utils::{create_unique_id, current_time, random_u128, u128_to_32_char_hex_string, HasID};
+use crate::utils::{
+    create_unique_id, current_time, random_u128, u128_to_32_char_hex_string, HasID,
+};
+
+use super::{AuthSessionID, SessionID};
 
 impl HasID for Session {
     fn get_id(&self) -> u128 {
-        self.id
+        self.id.0
     }
 }
 
-impl  HasID for AuthSession {
+impl HasID for AuthSession {
     fn get_id(&self) -> u128 {
-        self.id
+        self.id.0
     }
 }
 
 impl User {
-    pub fn create_session(&mut self) -> String {
-        let id: u128 = create_unique_id(&self.sessions);
+    pub fn create_session(&mut self) -> SessionID {
+        let id: SessionID =
+            u128_to_32_char_hex_string(create_unique_id(&self.auth.auth_sessions)).into();
         self.sessions.push(Session {
             id,
             created_at: current_time(),
             last_used: current_time(),
             root: false,
         });
-        u128_to_32_char_hex_string(id)
+        id
     }
 
-    pub fn create_auth_session(&mut self) -> String {
-        let id: u128 = create_unique_id(&self.auth.auth_sessions);
+    pub fn create_auth_session(&mut self) -> AuthSessionID {
+        let id: AuthSessionID =
+            u128_to_32_char_hex_string(create_unique_id(&self.auth.auth_sessions)).into();
         self.auth.auth_sessions.push(AuthSession {
             id,
             expires_at: current_time() + 3600,
@@ -37,61 +43,40 @@ impl User {
             completed_mfa: Vec::new(),
             password_correct: false,
         });
-        u128_to_32_char_hex_string(id)
+        id
     }
 
-    pub fn get_session_by_id(&self, id: &str) -> Result<&Session, Error> {
-        match u128::from_str_radix(id, 16) {
-            Ok(id) => self
-                .sessions
-                .iter()
-                .find(|s| s.id == id)
-                .ok_or(Error::new("Could not find session")),
-            Err(_) => Err(Error::new("Invalid session ID")),
+    pub fn get_session_by_id(&self, id: SessionID) -> Result<&Session, Error> {
+        self.sessions
+            .iter()
+            .find(|s| s.id == id)
+            .ok_or(Error::new("Could not find session"))
+    }
+
+    pub fn get_auth_session_by_id(&self, id: AuthSessionID) -> Result<&AuthSession, Error> {
+        self.auth
+            .auth_sessions
+            .iter()
+            .find(|s| s.id == id)
+            .ok_or(Error::new("Could not find auth session"))
+    }
+
+    fn get_mut_auth_session_by_id(&mut self, id: AuthSessionID) -> Result<&mut AuthSession, Error> {
+        match self.auth.auth_sessions.iter_mut().find(|s| s.id == id) {
+            Some(session) => Ok(session),
+            None => Err(Error::new("Could not find auth session")),
         }
     }
 
-    pub fn get_auth_session_by_id(&self, id: &str) -> Result<&AuthSession, Error> {
-        match u128::from_str_radix(id, 16) {
-            Ok(id) => self
-                .auth
-                .auth_sessions
-                .iter()
-                .find(|s| s.id == id)
-                .ok_or(Error::new("Could not find auth session")),
-            Err(_) => Err(Error::new("Invalid auth session ID")),
-        }
+    pub fn delete_auth_session_by_id(&mut self, id: AuthSessionID) {
+        self.auth.auth_sessions.retain(|s| s.id != id)
     }
 
-    fn get_mut_auth_session_by_id(&mut self, id: &str) -> Result<&mut AuthSession, Error> {
-        match u128::from_str_radix(id, 16) {
-            Ok(id) => match self.auth.auth_sessions.iter_mut().find(|s| s.id == id) {
-                Some(session) => Ok(session),
-                None => Err(Error::new("Could not find auth session")),
-            },
-            Err(_) => Err(Error::new("Invalid auth session ID")),
-        }
+    pub fn delete_session_by_id(&mut self, id: SessionID) {
+        self.sessions.retain(|s| s.id != id);
     }
 
-    pub fn delete_auth_session_by_id(&mut self, id: &str) {
-        if let Ok(id) = u128::from_str_radix(id, 16) {
-            self.auth.auth_sessions.retain(|s| s.id != id);
-        } else {
-            log::error!("Invalid auth session ID");
-        }
-    }
-
-    pub fn delete_session_by_id(&mut self, id: &str) -> bool {
-        match u128::from_str_radix(id, 16) {
-            Ok(id) => {
-                self.sessions.retain(|s| s.id != id);
-                true
-            }
-            Err(_) => false,
-        }
-    }
-
-    pub fn check_password_for_auth_session(&mut self, id: &str, response: &str) -> bool {
+    pub fn check_password_for_auth_session(&mut self, id: AuthSessionID, response: &str) -> bool {
         let password_hash = self.auth.hash.clone();
         match self.get_mut_auth_session_by_id(id) {
             Ok(auth_session) => {
@@ -111,7 +96,10 @@ impl User {
         }
     }
 
-    pub fn convert_auth_session_to_session(&mut self, id: &str) -> Result<String, &str> {
+    pub fn convert_auth_session_to_session(
+        &mut self,
+        id: AuthSessionID,
+    ) -> Result<SessionID, &str> {
         match self.get_auth_session_by_id(id) {
             Ok(auth_session) => {
                 if auth_session.password_correct {
@@ -150,7 +138,7 @@ impl User {
         self.save();
     }
 
-    pub fn check_auth_by_id(&self, id: &str) -> bool {
+    pub fn check_auth_by_id(&self, id: SessionID) -> bool {
         match self.get_session_by_id(id) {
             Ok(session) => match session
                 .last_used
@@ -163,7 +151,7 @@ impl User {
         }
     }
 
-    pub fn auth_session_add_completed_mfa(&mut self, id: &str, mfa_id: u8) {
+    pub fn auth_session_add_completed_mfa(&mut self, id: AuthSessionID, mfa_id: u8) {
         if let Ok(auth_session) = self.get_mut_auth_session_by_id(id) {
             // Only add if not already present and mfa_id is valid
             if !auth_session.completed_mfa.contains(&mfa_id) && mfa_id < 255 {

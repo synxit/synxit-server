@@ -9,7 +9,7 @@ use crate::{
         config::CONFIG,
         user::{MFAMethodPublic, User},
     },
-    utils::current_time,
+    utils::{as_str, current_time},
 };
 use actix_web::{get, post, routes, web::PayloadConfig, App, HttpResponse, HttpServer, Responder};
 use auth::handle_auth;
@@ -25,23 +25,23 @@ async fn redirect() -> impl Responder {
 }
 
 #[post("/synxit/auth")]
-async fn auth_request(req_body: String) -> impl Responder {
-    handle_auth(req_body).send()
+async fn auth_request(body: String) -> impl Responder {
+    handle_auth(Request::parse(body)).send()
 }
 
 #[post("/synxit/registration")]
-async fn registration_request(req_body: String) -> impl Responder {
-    handle_registration(req_body).send()
+async fn registration_request(body: String) -> impl Responder {
+    handle_registration(Request::parse(body)).send()
 }
 
 #[post("/synxit/blob")]
-async fn blob_request(req_body: String) -> impl Responder {
-    handle_blob(req_body).send()
+async fn blob_request(body: String) -> impl Responder {
+    handle_blob(Request::parse(body)).send()
 }
 
 #[post("/synxit/federation")]
-async fn federation_request(req_body: String) -> impl Responder {
-    handle_federation(req_body).await.send()
+async fn federation_request(body: String) -> impl Responder {
+    handle_federation(Request::parse(body)).await.send()
 }
 
 #[get("/synxit/status")]
@@ -94,39 +94,37 @@ pub async fn start_server() {
     };
 }
 
-#[derive(Debug, Serialize, Deserialize)]
-pub struct Request {
-    pub action: String,
-    pub data: Value,
+#[derive(Serialize, Deserialize)]
+struct Request {
+    action: String,
+    data: Value,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-pub struct Response {
-    pub success: bool,
-    pub data: Value,
-}
+pub struct Response(Result<Value, String>);
 
 impl Response {
     pub fn to_string(&self) -> String {
-        serde_json::to_string(&self).unwrap_or(r#"{"success": false, "data": {}}"#.to_string())
+        match &self.0 {
+            Ok(data) => json!({ "success": true, "data": data }).to_string(),
+            Err(err) => json!({ "success": false, "data": { "error": err} }).to_string(),
+        }
     }
 
     pub fn send(&self) -> impl Responder {
-        if self.success {
-            HttpResponse::Ok()
+        match &self.0 {
+            Ok(_) => HttpResponse::Ok()
                 .append_header(("Access-Control-Allow-Origin", "*"))
                 .append_header(("Content-Type", "application/json"))
-                .body(self.to_string())
-        } else if self.data["error"] == ERROR_UNAUTHORIZED {
-            HttpResponse::Unauthorized()
+                .body(self.to_string()),
+            Err(err) if err == ERROR_UNAUTHORIZED => HttpResponse::Unauthorized()
                 .append_header(("Access-Control-Allow-Origin", "*"))
                 .append_header(("Content-Type", "application/json"))
-                .body(self.to_string())
-        } else {
-            HttpResponse::BadRequest()
+                .body(self.to_string()),
+            Err(_) => HttpResponse::BadRequest()
                 .append_header(("Access-Control-Allow-Origin", "*"))
                 .append_header(("Content-Type", "application/json"))
-                .body(self.to_string())
+                .body(self.to_string()),
         }
     }
 
@@ -137,25 +135,26 @@ impl Response {
     }
 
     pub fn error(message: &str) -> Self {
-        Response {
-            success: false,
-            data: json!({ "error": message }),
-        }
+        Response(Err(message.to_string()))
     }
 
     pub fn success(data: serde_json::Value) -> Self {
-        Response {
-            success: true,
-            data,
-        }
+        Response(Ok(data))
     }
 }
 
 impl Request {
+    pub fn parse(req: String) -> Self {
+        serde_json::from_str(req.as_str()).unwrap_or(Request {
+            action: "".to_string(),
+            data: json!({}),
+        })
+    }
+
     pub fn get_user(&self) -> Result<User, Response> {
-        match self.data["username"].as_str() {
-            None => Err(Response::error(ERROR_USER_NOT_FOUND)),
-            Some(username) => match User::load(username) {
+        match self.userhandle() {
+            Err(_) => Err(Response::error(ERROR_USER_NOT_FOUND)),
+            Ok(userhandle) => match User::load(userhandle) {
                 Ok(user) => Ok(user),
                 Err(err) => Err(Response::error(err.to_string().as_str())),
             },
@@ -163,11 +162,11 @@ impl Request {
     }
 
     pub fn get_auth_user(&self) -> Result<User, Response> {
-        match self.data["username"].as_str() {
-            None => Err(Response::error(ERROR_USER_NOT_FOUND)),
-            Some(username) => match User::load(username) {
+        match self.userhandle() {
+            Err(_) => Err(Response::error(ERROR_USER_NOT_FOUND)),
+            Ok(userhandle) => match User::load(userhandle) {
                 Ok(user) => {
-                    if user.check_auth_by_id(self.data["session"].as_str().unwrap_or_default()) {
+                    if user.check_auth_by_id(self.session()) {
                         Ok(user)
                     } else {
                         Err(Response::error(ERROR_UNAUTHORIZED))
@@ -180,13 +179,11 @@ impl Request {
 
     pub fn get_auth_completed_response(&self) -> Response {
         match self.get_user() {
-            Ok(mut user) => match user.convert_auth_session_to_session(
-                self.data["auth_session"].as_str().unwrap_or_default(),
-            ) {
+            Ok(mut user) => match user.convert_auth_session_to_session(self.auth_session()) {
                 Ok(session_id) => {
                     user.save();
                     Response::success(json!({
-                        "username": user.username,
+                        "username": user.userhandle,
                         "status": "success",
                         "session": session_id,
                         "master_key": user.auth.encrypted.master_key,
@@ -197,10 +194,8 @@ impl Request {
                 Err(err) => match err {
                     "require_mfa" => {
                         let mut enabled_methods: Vec<MFAMethodPublic> = vec![];
-                        let auth_session_id =
-                            self.data["auth_session"].as_str().unwrap_or_default();
 
-                        if let Ok(auth_session) = user.get_auth_session_by_id(auth_session_id) {
+                        if let Ok(auth_session) = user.get_auth_session_by_id(self.auth_session()) {
                             for method in &user.auth.mfa.methods {
                                 if method.enabled
                                     && !auth_session.completed_mfa.contains(&method.id)
@@ -215,15 +210,13 @@ impl Request {
                         }
 
                         Response::success(json!({
-                            "username": user.username,
+                            "username": user.userhandle,
                             "status": "require_mfa",
                             "methods": enabled_methods
                         }))
                     }
                     "require_password" => {
-                        user.delete_auth_session_by_id(
-                            self.data["auth_session"].as_str().unwrap_or_default(),
-                        );
+                        user.delete_auth_session_by_id(self.auth_session());
                         user.save();
                         Response::success(json!({
                             "status": "require_password"
@@ -235,11 +228,16 @@ impl Request {
             Err(err) => err,
         }
     }
-}
 
-pub fn parse_request(req: String) -> Request {
-    serde_json::from_str(req.as_str()).unwrap_or(Request {
-        action: "".to_string(),
-        data: json!({}),
-    })
+    pub fn action(&self) -> &str {
+        self.action.as_str()
+    }
+
+    pub fn get_str(&self, field: &str) -> &str {
+        as_str(&self.data[field])
+    }
+
+    pub fn get_string(&self, field: &str) -> String {
+        self.get_str(field).to_string()
+    }
 }

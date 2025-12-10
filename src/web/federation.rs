@@ -1,399 +1,237 @@
-use serde_json::json;
-
-use super::{parse_request, Response};
+use super::{Request, Response};
 use crate::{
     logger::error::{
-        ERROR_BLOB_HASH_NOT_MATCH, ERROR_BLOB_NOT_FOUND, ERROR_BLOB_NOT_IN_SHARE,
-        ERROR_INVALID_ACTION, ERROR_INVALID_JSON, ERROR_NO_WRITE_ACCESS, ERROR_REMOTE_ERROR,
-        ERROR_USER_NOT_FOUND, ERROR_WRONG_SECRET,
+        ERROR_BLOB_NOT_FOUND, ERROR_INVALID_ACTION, ERROR_INVALID_JSON, ERROR_NO_WRITE_ACCESS,
+        ERROR_REMOTE_ERROR, ERROR_SHARE_NOT_FOUND, ERROR_USER_NOT_FOUND,
     },
     synxit::{
-        config::{Config, CONFIG},
-        user::User,
+        config::get_config,
+        user::{
+            blob::{BlobID, Share, ShareID, ShareSecret},
+            User, UserHandle,
+        },
     },
-    utils::char_hex_string_to_u128,
 };
+use serde_json::json;
 
-pub async fn handle_federation(body: String) -> Response {
-    let req = parse_request(body.to_string());
+impl Request {
+    pub fn share_id(&self) -> ShareID {
+        self.get_string("share_id").into()
+    }
+
+    pub fn share_secret(&self) -> ShareSecret {
+        self.get_string("share_secret").into()
+    }
+
+    pub fn share_user(&self) -> Result<UserHandle, Response> {
+        UserHandle::from_string(self.get_string("share_user"))
+            .map_err(|_| Response::error(ERROR_USER_NOT_FOUND))
+    }
+}
+
+/// Handles federation-related actions such as proxy, blobs, read, update, delete, etc.
+pub async fn handle_federation(req: Request) -> Response {
+    if let Err(response) = validate_federation_config(&req) {
+        return response;
+    }
+
+    match req.action() {
+        "proxy" => handle_proxy_action(&req).await,
+        "blobs" => handle_blobs_action(&req),
+        "read" => handle_read_action(&req),
+        "update" => handle_update_action(&req),
+        "delete" => handle_delete_action(&req),
+        "create" => handle_create_action(&req),
+        "foreign_key" => handle_foreign_key_action(&req),
+        _ => Response::error(ERROR_INVALID_ACTION),
+    }
+}
+
+/// Validates the federation configuration.
+fn validate_federation_config(req: &Request) -> Result<(), Response> {
+    let config = get_config();
     let share_user = req.data["share_user"].as_str().unwrap_or_default();
-    let config_default = Config::default();
-    let config = CONFIG.get().unwrap_or(&config_default);
     let server = User::resolve_user(share_user)
         .unwrap_or((String::new(), String::new()))
         .1;
-    if config.federation.enabled {
-        if config.federation.whitelist.enabled
-            && !config.federation.whitelist.hosts.contains(&server)
-        {
-            return Response::error(ERROR_REMOTE_ERROR);
-        }
-        if config.federation.blacklist.enabled
-            && config.federation.blacklist.hosts.contains(&server)
-        {
-            return Response::error(ERROR_REMOTE_ERROR);
-        }
-    } else {
-        return Response::error(ERROR_REMOTE_ERROR);
+
+    if !config.federation.enabled
+        || (config.federation.whitelist.enabled
+            && !config.federation.whitelist.hosts.contains(&server))
+        || (config.federation.blacklist.enabled
+            && config.federation.blacklist.hosts.contains(&server))
+    {
+        return Err(Response::error(ERROR_REMOTE_ERROR));
     }
-    let share_secret = req.data["secret"].as_str().unwrap_or_default();
-    let share_secret_num = char_hex_string_to_u128(share_secret.to_string());
-    let share_id = req.data["id"].as_str().unwrap_or_default();
-    match req.action.as_str() {
-        "proxy" => {
-            handle_proxy_action(parse_request(body), share_user, share_secret, share_id).await
-        }
-        "blobs" => handle_blobs_action(share_user, share_secret_num, share_id),
-        "read" => handle_read_action(&req, share_user, share_secret_num, share_id),
-        "update" => handle_update_action(&req, share_user, share_secret_num, share_id),
-        "delete" => handle_delete_action(&req, share_user, share_secret_num, share_id),
-        "create" => handle_create_action(&req, share_user, share_secret_num, share_id),
-        "foreign_key" => foreign_key(share_user),
-        _ => Response::error(ERROR_INVALID_ACTION),
-    }
+
+    Ok(())
 }
 
-async fn handle_proxy_action(
-    req: super::Request,
-    share_user: &str,
-    share_secret: &str,
-    share_id: &str,
-) -> Response {
-    match req.get_auth_user() {
+/// Handles the "proxy" action.
+async fn handle_proxy_action(req: &Request) -> Response {
+    let share_user = match req.share_user() {
         Ok(user) => user,
-        Err(err) => return err,
-    };
-
-    let pair = match User::resolve_user(share_user) {
-        Ok(pair) => pair,
-        Err(_) => return Response::error(ERROR_INVALID_ACTION),
-    };
-
-    let url = format!("http://{}:8400/synxit/federation", pair.1);
-
-    match req.data["action"].as_str().unwrap_or_default() {
-        "blobs" => {
-            let request_body = json!({
-                "action": "blobs",
-                "data": {
-                    "id": share_id,
-                    "share_user": share_user,
-                    "secret": share_secret
-                }
-            });
-
-            match post_request(url, &request_body).await {
-                Ok(success) => serde_json::from_value(success)
-                    .unwrap_or_else(|_| Response::error(ERROR_INVALID_JSON)),
-                Err(_) => Response::error(ERROR_REMOTE_ERROR),
-            }
-        }
-        "read" => {
-            let request_body = json!({
-                "action": "read",
-                "data": {
-                    "id": share_id,
-                    "share_user": share_user,
-                    "secret": share_secret,
-                    "blob": req.data["blob"].as_str().unwrap_or_default()
-                }
-            });
-
-            match post_request(url, &request_body).await {
-                Ok(success) => serde_json::from_value(success)
-                    .unwrap_or_else(|_| Response::error(ERROR_INVALID_JSON)),
-                Err(_) => Response::error(ERROR_REMOTE_ERROR),
-            }
-        }
-        "update" => {
-            let request_body = json!({
-                "action": "update",
-                "data": {
-                    "id": share_id,
-                    "share_user": share_user,
-                    "secret": share_secret,
-                    "blob": req.data["blob"].as_str().unwrap_or_default(),
-                    "content": req.data["content"].as_str().unwrap_or_default(),
-                    "hash": req.data["hash"].as_str().unwrap_or_default(),
-                }
-            });
-
-            match post_request(url, &request_body).await {
-                Ok(success) => serde_json::from_value(success)
-                    .unwrap_or_else(|_| Response::error(ERROR_INVALID_JSON)),
-                Err(_) => Response::error(ERROR_REMOTE_ERROR),
-            }
-        }
-        "delete" => {
-            let request_body = json!({
-                "action": "delete",
-                "data": {
-                    "id": share_id,
-                    "share_user": share_user,
-                    "secret": share_secret,
-                    "blob": req.data["blob"].as_str().unwrap_or_default(),
-                }
-            });
-
-            match post_request(url, &request_body).await {
-                Ok(success) => serde_json::from_value(success)
-                    .unwrap_or_else(|_| Response::error(ERROR_INVALID_JSON)),
-                Err(_) => Response::error(ERROR_REMOTE_ERROR),
-            }
-        }
-        "create" => {
-            let request_body = json!({
-                "action": "create",
-                "data": {
-                    "id": share_id,
-                    "share_user": share_user,
-                    "secret": share_secret,
-                    "content": req.data["content"].as_str().unwrap_or_default(),
-                }
-            });
-
-            match post_request(url, &request_body).await {
-                Ok(success) => serde_json::from_value(success)
-                    .unwrap_or_else(|_| Response::error(ERROR_INVALID_JSON)),
-                Err(_) => Response::error(ERROR_REMOTE_ERROR),
-            }
-        }
-        "foreign_key" => {
-            let request_body = json!({
-                "action": "foregin_key",
-                "data": {
-                    "share_user": share_user,
-                }
-            });
-
-            match post_request(url, &request_body).await {
-                Ok(success) => serde_json::from_value(success)
-                    .unwrap_or_else(|_| Response::error(ERROR_INVALID_JSON)),
-                Err(_) => Response::error(ERROR_REMOTE_ERROR),
-            }
-        }
-        _ => Response::error(ERROR_INVALID_ACTION),
-    }
-}
-
-fn handle_blobs_action(share_user: &str, share_secret_num: u128, share_id: &str) -> Response {
-    let share = match User::get_share_by_id(share_user.to_string(), share_id.to_string()) {
-        Ok(share) => share,
-        Err(err) => return Response::error(&err.to_string()),
-    };
-
-    if share.secret != share_secret_num {
-        return Response::error(ERROR_WRONG_SECRET);
-    }
-
-    Response::success(json!({
-        "blobs": share.blobs,
-        "write_access": share.write
-    }))
-}
-
-fn handle_read_action(
-    req: &super::Request,
-    share_user: &str,
-    share_secret_num: u128,
-    share_id: &str,
-) -> Response {
-    let blob = req.data["blob"].as_str().unwrap_or_default();
-
-    match validate_share_access(share_user, share_secret_num, share_id) {
-        Ok(share) => share,
         Err(response) => return response,
     };
 
-    let user = match User::load(share_user) {
-        Ok(user) => user,
-        Err(_) => return Response::error(ERROR_USER_NOT_FOUND),
-    };
+    let url = resolve_federation_url(&share_user);
+    let action = req.data["action"].as_str().unwrap_or_default();
+    let request_body = build_proxy_request_body(action, &share_user, req);
 
-    if User::check_share_permissions(
-        share_user.to_string(),
-        share_id.to_string(),
-        share_secret_num.to_string(),
-        blob.to_string(),
-        false,
-    )
-    .is_err()
-    {
-        return Response::error(ERROR_BLOB_NOT_IN_SHARE);
+    match post_request(url, &request_body).await {
+        Ok(success) => {
+            serde_json::from_value(success).unwrap_or_else(|_| Response::error(ERROR_INVALID_JSON))
+        }
+        Err(_) => Response::error(ERROR_REMOTE_ERROR),
+    }
+}
+
+/// Resolves the federation URL for the given user.
+fn resolve_federation_url(share_user: &UserHandle) -> String {
+    format!("http://{}:8400/synxit/federation", share_user.get_server())
+}
+
+/// Builds the request body for the proxy action.
+fn build_proxy_request_body(
+    action: &str,
+    share_user: &UserHandle,
+    req: &Request,
+) -> serde_json::Value {
+    let mut data = json!({
+        "id": req.share_id(),
+        "share_user": share_user,
+        "secret": req.share_secret(),
+    });
+
+    if matches!(action, "update" | "create") {
+        data["content"] = req.data["content"].clone();
     }
 
-    match user.read_blob(blob) {
-        Ok(result) => Response::success(json!({
-            "content": result.0,
-            "hash": result.1,
+    if matches!(action, "update" | "delete" | "read") {
+        data["blob"] = req.data["blob"].clone();
+    }
+
+    if action == "update" {
+        data["hash"] = req.data["hash"].clone();
+    }
+
+    json!({ "action": action, "data": data })
+}
+
+/// Handles the "blobs" action.
+fn handle_blobs_action(req: &Request) -> Response {
+    match validate_user_and_share(req) {
+        Ok(share) => Response::success(json!({
+            "blobs": share.1.blobs,
+            "write_access": share.1.write,
         })),
-        Err(e) => Response::error(e.to_string().as_str()),
+        Err(response) => response,
     }
 }
 
-fn handle_update_action(
-    req: &super::Request,
-    share_user: &str,
-    share_secret_num: u128,
-    share_id: &str,
-) -> Response {
-    let blob = req.data["blob"].as_str().unwrap_or_default();
-    let content = req.data["content"].as_str().unwrap_or_default();
-    let old_hash = req.data["hash"].as_str().unwrap_or_default();
-
-    match validate_share_access(share_user, share_secret_num, share_id) {
-        Ok(share) => share,
-        Err(response) => return response,
-    };
-
-    let user = match User::load(share_user) {
-        Ok(user) => user,
-        Err(_) => return Response::error(ERROR_USER_NOT_FOUND),
-    };
-
-    if User::check_share_permissions(
-        share_user.to_string(),
-        share_id.to_string(),
-        share_secret_num.to_string(),
-        blob.to_string(),
-        true,
-    )
-    .is_err()
-    {
-        return Response::error(ERROR_BLOB_NOT_IN_SHARE);
-    }
-
-    match user.update_blob(blob, content, old_hash) {
-        Ok(hash) => Response::success(json!({
-            "hash": hash
-        })),
-        Err(e) => Response::error(e.to_string().as_str()),
+/// Handles the "read" action.
+fn handle_read_action(req: &Request) -> Response {
+    let blob_id = req.blob_id();
+    match validate_user_and_blob(req, blob_id, false) {
+        Ok(user) => match user.read_blob(blob_id) {
+            Ok(result) => Response::success(json!({
+                "content": result.0,
+                "hash": result.1,
+            })),
+            Err(e) => Response::error(e.to_string().as_str()),
+        },
+        Err(response) => response,
     }
 }
 
-fn handle_delete_action(
-    req: &super::Request,
-    share_user: &str,
-    share_secret_num: u128,
-    share_id: &str,
-) -> Response {
-    let blob = req.data["blob"].as_str().unwrap_or_default();
-    let hash = req.data["hash"].as_str().unwrap_or_default();
+/// Handles the "update" action.
+fn handle_update_action(req: &Request) -> Response {
+    let blob_id = req.blob_id();
+    let content = req.content();
+    let old_hash = req.blob_hash();
 
-    match validate_share_access(share_user, share_secret_num, share_id) {
-        Ok(share) => share,
-        Err(response) => return response,
-    };
-
-    let user = match User::load(share_user) {
-        Ok(user) => user,
-        Err(_) => return Response::error(ERROR_USER_NOT_FOUND),
-    };
-
-    if User::check_share_permissions(
-        share_user.to_string(),
-        share_id.to_string(),
-        share_secret_num.to_string(),
-        blob.to_string(),
-        true,
-    )
-    .is_err()
-    {
-        return Response::error(ERROR_BLOB_NOT_IN_SHARE);
+    match validate_user_and_blob(req, blob_id, true) {
+        Ok(user) => match user.update_blob(blob_id, content, old_hash) {
+            Ok(hash) => Response::success(json!({ "hash": hash })),
+            Err(e) => Response::error(e.to_string().as_str()),
+        },
+        Err(response) => response,
     }
+}
 
-    match user.read_blob(blob) {
-        Ok(read) => {
-            if *hash == read.1 {
-                if user.delete_blob(blob) {
-                    Response::success(json!({}))
-                } else {
-                    Response::error(ERROR_BLOB_NOT_FOUND)
-                }
+/// Handles the "delete" action.
+fn handle_delete_action(req: &Request) -> Response {
+    let blob_id = req.blob_id();
+    match validate_user_and_blob(req, blob_id, true) {
+        Ok(user) => {
+            if user.delete_blob(blob_id) {
+                Response::success(json!({}))
             } else {
-                Response::error(ERROR_BLOB_HASH_NOT_MATCH)
+                Response::error(ERROR_BLOB_NOT_FOUND)
             }
         }
-        Err(e) => Response::error(e.to_string().as_str()),
+        Err(response) => response,
     }
 }
 
-fn handle_create_action(
-    req: &super::Request,
-    share_user: &str,
-    share_secret_num: u128,
-    share_id: &str,
-) -> Response {
-    let content = req.data["content"].as_str().unwrap_or_default();
-
-    let share = match validate_share_access(share_user, share_secret_num, share_id) {
-        Ok(share) => share,
-        Err(response) => return response,
-    };
-
-    if !share.write {
-        return Response::error(ERROR_NO_WRITE_ACCESS);
-    }
-
-    let user = match User::load(share_user) {
-        Ok(user) => user,
-        Err(_) => return Response::error(ERROR_USER_NOT_FOUND),
-    };
-
-    let new_blob = match user.create_blob(content) {
-        Ok(blob) => blob,
-        Err(err) => return Response::error(&err.to_string()),
-    };
-
-    if User::add_blob_to_share(
-        share_user.to_string(),
-        share_id.to_string(),
-        new_blob.0.to_string(),
-    )
-    .is_err()
-    {
-        Response::error(ERROR_BLOB_NOT_IN_SHARE)
-    } else {
-        Response::success(json!({
-            "id": new_blob.0
-        }))
+/// Handles the "create" action.
+fn handle_create_action(req: &Request) -> Response {
+    match validate_user_and_share(req) {
+        Ok(share) => {
+            if !share.1.write {
+                return Response::error(ERROR_NO_WRITE_ACCESS);
+            }
+            match share.0.create_blob(req.content()) {
+                Ok((blob_id, hash)) => match share.0.add_blob_to_share(share.1.id, blob_id) {
+                    Ok(_) => Response::success(json!({ "id": blob_id, "hash": hash })),
+                    Err(_) => Response::error("message"),
+                },
+                Err(e) => Response::error(e.to_string().as_str()),
+            }
+        }
+        Err(response) => response,
     }
 }
 
-fn foreign_key(user: &str) -> Response {
-    match User::load(user) {
-        Ok(user) => Response::success(json!({"foreign_key": user.foreign_keyring})),
-        Err(err) => Response::error(err.to_string().as_str()),
+/// Handles the "foreign_key" action.
+fn handle_foreign_key_action(req: &Request) -> Response {
+    match req.share_user() {
+        Ok(user) => match User::load(user) {
+            Ok(user) => Response::success(json!({ "foreign_key": user.foreign_keyring })),
+            Err(err) => Response::error(err.to_string().as_str()),
+        },
+        Err(response) => response,
     }
 }
 
-fn validate_share_access(
-    share_user: &str,
-    share_secret_num: u128,
-    share_id: &str,
-) -> Result<crate::synxit::user::blob::Share, Response> {
-    let share = match User::get_share_by_id(share_user.to_string(), share_id.to_string()) {
-        Ok(share) => share,
-        Err(err) => return Err(Response::error(&err.to_string())),
-    };
-
-    if share.secret != share_secret_num {
-        return Err(Response::error(ERROR_WRONG_SECRET));
+/// Validates the user and share access.
+fn validate_user_and_share(req: &Request) -> Result<(User, Share), Response> {
+    let share_user = req.share_user()?;
+    let user = User::load(share_user).map_err(|_| Response::error(ERROR_USER_NOT_FOUND))?;
+    match user.validate_share_access(req.share_id(), req.share_secret()) {
+        Ok(share) => Ok((user, share)),
+        Err(_) => Err(Response::error(ERROR_SHARE_NOT_FOUND)),
     }
-
-    Ok(share)
 }
 
+/// Validates the user and blob access.
+fn validate_user_and_blob(
+    req: &Request,
+    blob_id: BlobID,
+    write_access: bool,
+) -> Result<User, Response> {
+    let share_user = req.share_user()?;
+    let user = User::load(share_user).map_err(|_| Response::error(ERROR_USER_NOT_FOUND))?;
+    user.validate_blob_access(req.share_id(), req.share_secret(), blob_id, write_access)
+        .map_err(|response| Response::error(response.to_string().as_str()))?;
+    Ok(user)
+}
+
+/// Sends a POST request to the given URL with the provided JSON body.
 async fn post_request(
     url: String,
     json_body: &serde_json::Value,
 ) -> Result<serde_json::Value, reqwest::Error> {
     let client = reqwest::Client::new();
-    client
-        .post(url)
-        .json(json_body)
-        .send()
-        .await?
-        .json::<serde_json::Value>()
-        .await
+    client.post(url).json(json_body).send().await?.json().await
 }

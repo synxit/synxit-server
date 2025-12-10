@@ -1,12 +1,15 @@
 pub mod blob;
 mod sessions;
 
+use std::fmt::Display;
+
 use crate::logger::error::Error;
 use crate::storage::file::{
     create_dir, dir_exists, file_exists, get_folder_size, read_dir, read_file_to_string,
     write_file_from_string,
 };
 use crate::synxit::config::Config;
+use crate::utils::{char_hex_string_to_u128, u128_to_32_char_hex_string};
 use log::{error, info, warn};
 use serde::{Deserialize, Serialize};
 use totp_rs::TOTP;
@@ -16,7 +19,7 @@ use super::security::verify_totp_code;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Session {
-    pub id: u128,
+    pub id: SessionID,
     pub created_at: u64,
     pub last_used: u64,
     pub root: bool,
@@ -24,7 +27,7 @@ pub struct Session {
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct AuthSession {
-    pub id: u128,
+    pub id: AuthSessionID,
     pub expires_at: u64,
     pub challenge: u128,
     pub completed_mfa: Vec<u8>,
@@ -34,7 +37,7 @@ pub struct AuthSession {
 #[derive(Debug, Serialize, Deserialize)]
 pub struct User {
     #[serde(skip)]
-    pub username: String,
+    pub userhandle: UserHandle,
     pub sessions: Vec<Session>,
     pub auth: Auth,
     pub foreign_keyring: String,
@@ -88,6 +91,105 @@ pub enum MFAMethodType {
     #[serde(rename = "u2f")]
     U2F,
 }
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct Username(String);
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct Server(String);
+#[derive(Debug, Serialize, Deserialize, Default, Clone)]
+pub struct UserHandle(String);
+
+#[derive(Debug, Serialize, Deserialize, Clone, Copy, PartialEq)]
+pub struct AuthSessionID(u128);
+#[derive(Debug, Serialize, Deserialize, Clone, Copy, PartialEq)]
+pub struct SessionID(u128);
+
+impl From<SessionID> for String {
+    fn from(val: SessionID) -> Self {
+        u128_to_32_char_hex_string(val.0)
+    }
+}
+
+impl From<String> for SessionID {
+    fn from(val: String) -> Self {
+        SessionID(char_hex_string_to_u128(val))
+    }
+}
+
+impl From<AuthSessionID> for String {
+    fn from(val: AuthSessionID) -> Self {
+        u128_to_32_char_hex_string(val.0)
+    }
+}
+
+impl From<String> for AuthSessionID {
+    fn from(val: String) -> Self {
+        AuthSessionID(char_hex_string_to_u128(val))
+    }
+}
+
+impl Server {
+    pub fn new(s: String) -> Self {
+        Server(s)
+    }
+}
+
+impl Display for Server {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", &self.0)
+    }
+}
+
+impl Display for UserHandle {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let s = self.split();
+        if s.0 .0 == "root" {
+            write!(f, "@{}:", s.1 .0)
+        } else {
+            write!(f, "@{}:{}", s.0 .0, s.1 .0)
+        }
+    }
+}
+
+impl UserHandle {
+    pub fn get_local_username(&self) -> String {
+        self.split().0 .0
+    }
+
+    pub fn get_server(&self) -> Server {
+        self.split().1
+    }
+
+    fn split(&self) -> (Username, Server) {
+        // remove @ in front only
+        let s = self.0.clone().to_lowercase().replace("@", "");
+        if s.contains(":") {
+            let parts: Vec<&str> = s.split(':').collect();
+            (Username(parts[0].to_string()), Server(parts[1].to_string()))
+        } else {
+            (
+                Username("root".to_string()),
+                Server(self.0.clone())
+            )
+        }
+    }
+
+    fn verify(&self) -> bool {
+        let s = self.split();
+        s.0.0.chars().all(|c| c.is_ascii_alphanumeric() || c == '.') &&
+        s.1.0.chars().all(|c| c.is_ascii_alphanumeric() || c == '.' || c == '-') &&
+        s.0.0.len() >= 3 && s.0.0.len() <= 32 && // username length
+        s.1.0.len() >= 3 && s.1.0.len() <= 253 // domain name max length
+    }
+
+    pub fn from_string(s: String) -> Result<Self, Error> {
+        let tmp = Self(s);
+        if tmp.verify() {
+            Ok(tmp)
+        } else {
+            Err(Error::new("Invalid userhandle string"))
+        }
+    }
+}
 
 impl User {
     pub fn all() -> Vec<User> {
@@ -98,9 +200,18 @@ impl User {
         ) {
             Ok(dir) => {
                 for user in dir {
-                    match User::load(("@".to_owned() + user.as_str() + ":").as_str()) {
-                        Ok(user) => users.push(user),
-                        Err(err) => error!("Error loading user: {}", err),
+                    match UserHandle::from_string("@".to_string() + user.as_str() + ":localhost") {
+                        Ok(userhandle) => match User::load(userhandle) {
+                            Ok(loaded_user) => users.push(loaded_user),
+                            Err(err) => warn!("Error loading user {}: {}", user, err),
+                        },
+                        Err(err) => {
+                            warn!(
+                                "Error parsing userhandle {}: {}",
+                                "@".to_string() + user.as_str() + ":localhost",
+                                err
+                            );
+                        }
                     }
                 }
             }
@@ -109,9 +220,9 @@ impl User {
         users
     }
 
-    pub fn new(username: &str, hash: &str, salt: &str) -> User {
+    pub fn new(userhandle: UserHandle, hash: &str, salt: &str) -> User {
         User {
-            username: username.to_string(),
+            userhandle,
             sessions: vec![],
             auth: Auth {
                 hash: hash.to_string(),
@@ -143,11 +254,8 @@ impl User {
         }
     }
 
-    pub fn user_exists(username: &str) -> bool {
-        match Self::resolve_user_data_path(username, "data.json") {
-            Ok(path) => file_exists(path),
-            Err(_) => false,
-        }
+    pub fn user_exists(userhandle: UserHandle) -> bool {
+        file_exists(Self::resolve_user_data_path(userhandle, "data.json"))
     }
 
     pub fn to_string(&self) -> Result<String, Error> {
@@ -185,23 +293,19 @@ impl User {
         }
     }
 
-    pub fn load(username: &str) -> Result<User, Error> {
-        let lower_username = username.to_lowercase();
-        match Self::resolve_user_data_path(username, "data.json") {
-            Ok(path) => match read_file_to_string(path) {
-                Ok(data) => match User::from_json(data.as_str()) {
-                    Ok(mut user) => {
-                        user.username = lower_username;
-                        Ok(user)
-                    }
-                    Err(err) => {
-                        warn!("Error parsing user data: {}", err);
-                        Err(Error::new("Could not parse user data"))
-                    }
-                },
-                Err(_) => {
-                    warn!("Error loading user data");
-                    Err(Error::new("Could not load user data"))
+    pub fn load(userhandle: UserHandle) -> Result<User, Error> {
+        match read_file_to_string(Self::resolve_user_data_path(
+            userhandle.to_owned(),
+            "data.json",
+        )) {
+            Ok(data) => match User::from_json(data.as_str()) {
+                Ok(mut user) => {
+                    user.userhandle = userhandle;
+                    Ok(user)
+                }
+                Err(err) => {
+                    warn!("Error parsing user data: {}", err);
+                    Err(Error::new("Could not parse user data"))
                 }
             },
             Err(_) => {
@@ -212,14 +316,7 @@ impl User {
     }
 
     pub fn resolve_data_path(&self, path: &str) -> String {
-        // I know unwrap is not the best practice here, but we are sure that the path is valid
-        match Self::resolve_user_data_path(self.username.as_str(), path) {
-            Ok(path) => path,
-            Err(err) => {
-                warn!("Error resolving data path: {}", err);
-                "".to_string()
-            }
-        }
+        Self::resolve_user_data_path(self.userhandle.to_owned(), path)
     }
 
     pub fn resolve_user(user: &str) -> Result<(String, String), Error> {
@@ -238,15 +335,12 @@ impl User {
         }
     }
 
-    pub fn resolve_user_data_path(username: &str, path: &str) -> Result<String, Error> {
-        match Self::resolve_user(username) {
-            Ok(user) => Ok(CONFIG.get().unwrap().storage.data_dir.to_string()
-                + "/users/"
-                + user.0.as_str()
-                + "/"
-                + path),
-            Err(err) => Err(err),
-        }
+    fn resolve_user_data_path(username: UserHandle, path: &str) -> String {
+        CONFIG.get().unwrap().storage.data_dir.to_string()
+            + "/users/"
+            + username.get_local_username().as_str()
+            + "/"
+            + path
     }
 
     pub fn create_mfa(&mut self, r#type: MFAMethodType, name: String) -> Option<MFAMethod> {

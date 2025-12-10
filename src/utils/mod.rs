@@ -1,6 +1,10 @@
 use rand::rngs::OsRng;
 use rand::RngCore;
 
+pub fn as_str(value: &serde_json::Value) -> &str {
+    value.as_str().unwrap_or_default()
+}
+
 pub fn random_u128() -> u128 {
     let mut rng = OsRng;
     rng.next_u64() as u128 | ((rng.next_u64() as u128) << 64)
@@ -10,7 +14,7 @@ pub trait HasID {
     fn get_id(&self) -> u128;
 }
 
-pub fn create_unique_id<T: HasID>(existing_items: &Vec<T>) -> u128 {
+pub fn create_unique_id<T: HasID>(existing_items: &[T]) -> u128 {
     loop {
         let id = random_u128();
         if !existing_items.iter().any(|item| item.get_id() == id) {
