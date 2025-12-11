@@ -1,7 +1,7 @@
 use super::{Request, Response};
 use crate::{
     logger::error::ERROR_INVALID_ACTION,
-    synxit::user::blob::{Base64, BlobHash, BlobID},
+    user::blob::{Base64, BlobHash, BlobID},
 };
 use serde_json::json;
 
@@ -42,7 +42,7 @@ pub fn handle_blob(req: Request) -> Response {
 }
 
 /// Handles the creation of a new blob.
-fn handle_create_blob(user: &crate::synxit::user::User, req: &super::Request) -> Response {
+fn handle_create_blob(user: &crate::user::User, req: &super::Request) -> Response {
     match user.create_blob(req.content()) {
         Ok(blob) => Response::success(json!({
             "id": blob.0,
@@ -53,7 +53,7 @@ fn handle_create_blob(user: &crate::synxit::user::User, req: &super::Request) ->
 }
 
 /// Handles reading an existing blob.
-fn handle_read_blob(user: &crate::synxit::user::User, req: &super::Request) -> Response {
+fn handle_read_blob(user: &crate::user::User, req: &super::Request) -> Response {
     match user.read_blob(req.blob_id()) {
         Ok(blob) => Response::success(json!({
             "content": blob.0,
@@ -64,7 +64,7 @@ fn handle_read_blob(user: &crate::synxit::user::User, req: &super::Request) -> R
 }
 
 /// Handles updating an existing blob.
-fn handle_update_blob(user: &crate::synxit::user::User, req: &super::Request) -> Response {
+fn handle_update_blob(user: &crate::user::User, req: &super::Request) -> Response {
     match user.update_blob(req.blob_id(), req.content(), req.blob_hash()) {
         Ok(new_hash) => Response::success(json!({ "hash": new_hash })),
         Err(e) => Response::error(e.to_string().as_str()),
@@ -72,7 +72,7 @@ fn handle_update_blob(user: &crate::synxit::user::User, req: &super::Request) ->
 }
 
 /// Handles deleting an existing blob.
-fn handle_delete_blob(user: &crate::synxit::user::User, req: &super::Request) -> Response {
+fn handle_delete_blob(user: &crate::user::User, req: &super::Request) -> Response {
     let success = user.delete_blob(req.blob_id());
     if success {
         Response::success(json!({}))
@@ -82,7 +82,7 @@ fn handle_delete_blob(user: &crate::synxit::user::User, req: &super::Request) ->
 }
 
 /// Retrieves the hash of a blob.
-fn handle_blob_hash(user: &crate::synxit::user::User, req: &super::Request) -> Response {
+fn handle_blob_hash(user: &crate::user::User, req: &super::Request) -> Response {
     match user.read_blob(req.blob_id()) {
         Ok(blob) => Response::success(json!({ "hash": blob.1 })),
         Err(e) => Response::error(e.to_string().as_str()),
@@ -90,7 +90,7 @@ fn handle_blob_hash(user: &crate::synxit::user::User, req: &super::Request) -> R
 }
 
 /// Sets the blob map for the user.
-fn handle_set_blob_map(user: &mut crate::synxit::user::User, req: &super::Request) -> Response {
+fn handle_set_blob_map(user: &mut crate::user::User, req: &super::Request) -> Response {
     let blob_map = req.data["blob_map"].as_str();
     match blob_map {
         Some(map) => {
@@ -106,14 +106,14 @@ fn handle_set_blob_map(user: &mut crate::synxit::user::User, req: &super::Reques
 }
 
 /// Retrieves the blob map for the user.
-fn handle_get_blob_map(user: &crate::synxit::user::User) -> Response {
+fn handle_get_blob_map(user: &crate::user::User) -> Response {
     Response::success(json!({
         "blob_map": user.auth.encrypted.blob_map,
     }))
 }
 
 /// Retrieves the user's quota information.
-fn handle_get_quota(user: &crate::synxit::user::User) -> Response {
+fn handle_get_quota(user: &crate::user::User) -> Response {
     let used = user.get_used_quota();
     let total = user.get_tier_quota();
     Response::success(json!({

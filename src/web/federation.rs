@@ -4,7 +4,7 @@ use crate::{
         ERROR_BLOB_NOT_FOUND, ERROR_INVALID_ACTION, ERROR_INVALID_JSON, ERROR_NO_WRITE_ACCESS,
         ERROR_REMOTE_ERROR, ERROR_SHARE_NOT_FOUND, ERROR_USER_NOT_FOUND,
     },
-    synxit::{
+    {
         config::get_config,
         user::{
             blob::{BlobID, Share, ShareID, ShareSecret},

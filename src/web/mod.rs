@@ -5,11 +5,11 @@ mod registration;
 
 use crate::{
     logger::error::{ERROR_UNAUTHORIZED, ERROR_USER_NOT_FOUND},
-    synxit::{
+    utils::{as_str, current_time},
+    {
         config::CONFIG,
         user::{MFAMethodPublic, User},
     },
-    utils::{as_str, current_time},
 };
 use actix_web::{get, post, routes, web::PayloadConfig, App, HttpResponse, HttpServer, Responder};
 use auth::handle_auth;

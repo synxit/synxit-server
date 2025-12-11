@@ -3,7 +3,7 @@ use serde_json::json;
 
 use crate::{
     logger::error::ERROR_REGISTRATION_DISABLED,
-    synxit::{config::get_config, user::User},
+    {config::get_config, user::User},
 };
 
 use super::{Request, Response};

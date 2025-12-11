@@ -1,18 +1,21 @@
+mod cli;
+pub mod config;
 mod logger;
+pub mod security;
 mod storage;
-mod synxit;
+pub mod user;
 mod utils;
 mod web;
-mod cli;
 
 #[cfg(test)]
 mod tests;
 
 use std::path::Path;
 
+use config::load_config;
 use log::{debug, info, warn};
 use logger::display_copyright;
-use synxit::{config::load_config, user::User};
+use user::User;
 use web::start_server;
 
 #[actix_web::main]

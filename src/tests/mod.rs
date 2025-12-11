@@ -1,6 +1,7 @@
-use crate::synxit::config::load_config;
+use crate::config::load_config;
 use crate::{
-    synxit::{config::Config, security::verify_challenge_response},
+    config::Config,
+    security::verify_challenge_response,
     utils::{random_u128, u128_to_32_char_hex_string},
 };
 use std::path::Path;

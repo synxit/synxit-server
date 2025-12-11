@@ -2,7 +2,7 @@ use serde_json::json;
 
 use crate::{
     logger::error::{Error, ERROR_INVALID_ACTION, ERROR_INVALID_CREDENTIALS},
-    synxit::user::{AuthSessionID, MFAMethodType, SessionID, UserHandle},
+    user::{AuthSessionID, MFAMethodType, SessionID, UserHandle},
     utils::u128_to_32_char_hex_string,
 };
 
