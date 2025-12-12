@@ -33,6 +33,9 @@
               rustc
               rust-analyzer
               rustfmt
+              cargo-about
+              cargo-audit
+              clippy
             ]
             ++ scripts;
 

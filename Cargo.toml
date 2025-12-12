@@ -2,7 +2,7 @@
 publish = false
 name = "synxit-server"
 version = "0.0.1"
-edition = "2021"
+edition = "2024"
 license = "AGPL-3.0-or-later"
 description = "This is the synxit server software, a full encrypted decentralized network for almost everything."
 authors = ["Lennis Jaumann <x@lennis.dev>"]
@@ -14,6 +14,7 @@ actix-web = "4"
 base64 = "0.22.1"
 chrono = "0.4.38"
 colored = "3.0.0"
+fs4 = "0.13.1"
 log = { version = "0.4.26", features = ["std", "serde"] }
 rand = "0.8.5"
 reqwest = { version = "0.12.22", features = ["json"] }
