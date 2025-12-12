@@ -3,6 +3,8 @@ mod blob;
 mod federation;
 mod registration;
 
+use std::fmt::Display;
+
 use crate::{
     logger::error::{ERROR_UNAUTHORIZED, ERROR_USER_NOT_FOUND},
     utils::{as_str, current_time},
@@ -103,14 +105,20 @@ struct Request {
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Response(Result<Value, String>);
 
-impl Response {
-    pub fn to_string(&self) -> String {
+impl Display for Response {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match &self.0 {
-            Ok(data) => json!({ "success": true, "data": data }).to_string(),
-            Err(err) => json!({ "success": false, "data": { "error": err} }).to_string(),
+            Ok(data) => write!(f, "{}", json!({ "success": true, "data": data })),
+            Err(err) => write!(
+                f,
+                "{}",
+                json!({ "success": false, "data": { "error": err} })
+            ),
         }
     }
+}
 
+impl Response {
     pub fn send(&self) -> impl Responder {
         match &self.0 {
             Ok(_) => HttpResponse::Ok()
